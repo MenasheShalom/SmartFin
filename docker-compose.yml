@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    networks: [internal]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    # Localhost only until there's a dashboard; open to the LAN (or Tailscale) later.
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [internal, web]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Phase 1: run by hand with `docker compose run --rm scraper`.
+  # It has its own network with internet access and no route to the database or API.
+  scraper:
+    build: ./scraper
+    profiles: [manual]
+    environment:
+      SCRAPER_COMPANY: ${SCRAPER_COMPANY}
+      SCRAPER_CREDENTIALS: ${SCRAPER_CREDENTIALS}
+      SCRAPER_DAYS_BACK: ${SCRAPER_DAYS_BACK:-30}
+    volumes:
+      - ./scraper/output:/app/output
+    shm_size: 512mb
+    networks: [scraper]
+
+networks:
+  # No outbound internet: only backend and db live here.
+  internal:
+    internal: true
+  web: {}
+  scraper: {}

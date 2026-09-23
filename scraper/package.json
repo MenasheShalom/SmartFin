@@ -1,0 +1,17 @@
+{
+  "name": "smartfin-scraper",
+  "version": "0.1.0",
+  "private": true,
+  "description": "SmartFin scraper service: pulls transactions with israeli-bank-scrapers",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "scrape-once": "node src/scrape-once.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "israeli-bank-scrapers-core": "6.12.1"
+  }
+}
