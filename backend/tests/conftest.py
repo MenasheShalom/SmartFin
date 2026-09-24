@@ -2,6 +2,7 @@ import os
 
 # Tests run against SQLite in memory unless DATABASE_URL points elsewhere.
 os.environ.setdefault("DATABASE_URL", "sqlite+pysqlite:///:memory:")
+os.environ.setdefault("SYNC_WATCHDOG", "false")
 
 import pytest
 from fastapi.testclient import TestClient

@@ -1,0 +1,14 @@
+.git
+.env
+data/
+backups/
+**/node_modules/
+**/__pycache__/
+**/.pytest_cache/
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+backend/tests/
+scraper/output/
+scraper/config/accounts.json
+scraper/config/accounts.json.enc

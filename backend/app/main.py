@@ -1,5 +1,8 @@
+import asyncio
 import logging
 import secrets
+from contextlib import asynccontextmanager
+from pathlib import Path
 from datetime import date
 from zoneinfo import ZoneInfo
 
@@ -11,16 +14,29 @@ from sqlalchemy.orm import Session
 
 from app.alerts import check_budgets, check_large_transactions, check_low_balance, check_scrape_failure
 from app.config import Settings, get_settings
-from app.db import get_session
+from app.db import SessionLocal, get_session
 from app.ingest import IngestSummary, ScrapeResult, ingest
 from app.months import get_today
 from app.notify import channels, send_pending
 from app.auth import require_user
 from app.routers import accounts, alerts, auth, budgets, cashflow, categories, rules, transactions
+from app.spa import SPAStaticFiles
+from app.watchdog import run_forever
 
 log = logging.getLogger(__name__)
 
-app = FastAPI(title="SmartFin")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    settings = get_settings()
+    task = asyncio.create_task(run_forever(SessionLocal, settings)) if settings.sync_watchdog else None
+    yield
+    if task:
+        task.cancel()
+
+
+app = FastAPI(title="SmartFin", lifespan=lifespan)
 app.include_router(auth.router)
 for router in (
     categories.router,
@@ -77,3 +93,10 @@ def ingest_scrape_result(
         log.exception("Alert checks failed")
         session.rollback()
     return summary
+
+
+# The built web app (frontend/dist, copied to /app/static in the image). Mounted last, so API
+# routes win; any other path gets index.html and the app routes it.
+_static = Path(get_settings().static_dir)
+if (_static / "index.html").is_file():
+    app.mount("/", SPAStaticFiles(directory=_static, html=True), name="web")

@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node src/main.js",
     "scrape-once": "node src/scrape-once.js",
-    "test": "node --test"
+    "test": "node --test",
+    "encrypt-accounts": "node src/encrypt-accounts.js"
   },
   "dependencies": {
     "israeli-bank-scrapers-core": "6.12.1"

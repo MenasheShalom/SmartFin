@@ -19,3 +19,11 @@ node_modules/
 .DS_Store
 .idea/
 .vscode/
+
+# Frontend
+frontend/dist/
+frontend/test-results/
+frontend/playwright-report/
+backups/
+scraper/config/accounts.json.enc
+frontend/*.tsbuildinfo

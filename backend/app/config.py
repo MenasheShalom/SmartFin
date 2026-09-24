@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # Scraped timestamps are converted to calendar dates in this zone
     timezone: str = "Asia/Jerusalem"
 
+    # The built web app; served at / when it exists
+    static_dir: str = "static"
+
+    # Hourly check that alerts when no sync has finished for 30 hours
+    sync_watchdog: bool = True
+
     # --- Login ---
     # From `python -m app.password`; login is refused until it is set
     app_password_hash: str | None = None

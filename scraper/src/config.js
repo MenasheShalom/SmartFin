@@ -2,6 +2,8 @@ import { readFile } from 'node:fs/promises';
 
 import { SCRAPERS } from 'israeli-bank-scrapers-core';
 
+import { decrypt } from './crypto.js';
+
 // Companies whose login needs an interactive OTP flow; handled in a later phase.
 const UNSUPPORTED = new Set(['oneZero']);
 
@@ -38,7 +40,18 @@ export function parseAccounts(text) {
   return entries.map(validateAccount);
 }
 
-export async function loadAccounts(file) {
+// The encrypted file wins when both exist
+export async function loadAccounts(file, key = process.env.SCRAPER_ACCOUNTS_KEY) {
+  let sealed = null;
+  try {
+    sealed = await readFile(`${file}.enc`, 'utf8');
+  } catch {
+    // no encrypted file
+  }
+  if (sealed !== null) {
+    if (!key) throw new Error(`${file}.enc exists but SCRAPER_ACCOUNTS_KEY is not set`);
+    return parseAccounts(decrypt(sealed, key));
+  }
   let text;
   try {
     text = await readFile(file, 'utf8');
