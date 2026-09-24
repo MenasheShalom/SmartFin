@@ -18,7 +18,7 @@ Design doc: [SmartFin — Architecture & Build Strategy](https://claude.ai/artif
 
 - [x] **Phase 1: Foundation.** Compose skeleton, data model and migrations, one-shot manual scrape
 - [x] **Phase 2: Sync.** Nightly scrape of every account into Postgres, de-duplication, scrape logging
-- [ ] Phase 3: Categorization and budgets
+- [x] **Phase 3: Categorization and budgets.** Rules, manual overrides, monthly budgets, spend-vs-budget
 - [ ] Phase 4: Alerts (Telegram / email)
 - [ ] Phase 5: Dashboard
 - [ ] Phase 6: Hardening (backups, credential encryption, failure alerts)
@@ -72,6 +72,57 @@ every login, scrapes of that account will fail until OTP support lands.
 
 `.env`, `scraper/config/accounts.json` and `scraper/output/` hold your credentials and real
 transactions. All three are gitignored; keep them that way.
+
+## Categories, rules and budgets
+
+The API lives under `/api`. Interactive docs are at http://localhost:8000/docs.
+
+**Categories** have two levels (Food › Groceries) and a kind: `expense`, `income` or
+`transfer`. A starter set is created on first start; rename, add or delete freely. Mark
+money moving between your own accounts as a **transfer**, most importantly the monthly card bill
+paid from your bank account. Otherwise every card purchase counts twice: once on the card
+and again inside the bill.
+
+**Rules** file transactions into categories as they arrive. A plain pattern matches anywhere
+in the description or memo, ignoring case and extra spaces; set `is_regex` for a regular
+expression. When several rules match, the higher `priority` wins, then the longer pattern
+(so `PAYPAL *SPOTIFY` beats `PAYPAL`), then the older rule. Adding, changing or deleting a rule
+re-runs all rules over existing transactions, except ones you categorized by hand.
+
+```sh
+curl localhost:8000/api/categories    # ids used below
+
+# Everything from Shufersal is groceries
+curl -X POST localhost:8000/api/rules -H 'content-type: application/json' \
+  -d '{"match_pattern": "שופרסל", "category_id": 2}'
+
+# What still needs a category this month?
+curl 'localhost:8000/api/transactions?month=2026-09&uncategorized=true'
+
+# Categorize one by hand, and remember it for this description from now on
+curl -X PATCH localhost:8000/api/transactions/42 -H 'content-type: application/json' \
+  -d '{"category_id": 7, "create_rule": true}'
+```
+
+A hand-picked category is never overwritten by rules. Send `"category_id": null` to hand the
+transaction back to the rules.
+
+**Budgets** are set per expense category per month. A budget on a parent (Food) covers its
+subcategories.
+
+```sh
+curl -X PUT localhost:8000/api/budgets/2026-09/1 -H 'content-type: application/json' \
+  -d '{"limit_amount": 2000}'
+curl localhost:8000/api/budgets/summary               # current month to date
+curl 'localhost:8000/api/budgets/summary?month=2026-08'
+```
+
+The summary gives spent, remaining and percent used for each budget, spending in categories
+without a budget, and the count and total of uncategorized transactions. Spending is net:
+refunds reduce it. Income and transfers never count as spending.
+
+The API has no login yet. Only the machine itself (`127.0.0.1`) and SmartFin's own containers
+can reach it, until the dashboard phase adds authentication and opens it to the LAN.
 
 ## Development
 

@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.categorize import Categorizer
 from app.models import Account, AccountType, ScrapeRun, ScrapeStatus, Transaction
 
 # israeli-bank-scrapers company ids that are card issuers rather than banks
@@ -139,6 +140,7 @@ def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummar
         return IngestSummary(run_id=run.id, status=run.status)
 
     summary = IngestSummary(run_id=0, status=ScrapeStatus.SUCCESS, accounts=len(result.accounts))
+    categorizer = Categorizer.load(session)
     for scraped in result.accounts:
         account = get_or_create_account(session, result.institution, scraped.account_number)
         if scraped.balance is not None:
@@ -161,6 +163,7 @@ def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummar
             if external_id in existing:
                 summary.duplicates += 1
                 continue
+            memo = clean_description(txn.memo or "") or None
             session.add(
                 Transaction(
                     account_id=account.id,
@@ -170,6 +173,8 @@ def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummar
                     currency=txn.charged_currency or "ILS",
                     description=clean_description(txn.description),
                     raw_description=txn.description,
+                    memo=memo,
+                    category_id=categorizer.category_for(txn.description, memo),
                 )
             )
             summary.added += 1

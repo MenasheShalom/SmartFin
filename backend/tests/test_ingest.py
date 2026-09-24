@@ -5,7 +5,15 @@ from sqlalchemy import select
 
 from app.config import Settings, get_settings
 from app.main import app
-from app.models import Account, AccountType, ScrapeRun, ScrapeStatus, Transaction
+from app.models import (
+    Account,
+    AccountType,
+    CategorizationRule,
+    Category,
+    ScrapeRun,
+    ScrapeStatus,
+    Transaction,
+)
 
 TOKEN = "test-token"
 AUTH = {"Authorization": f"Bearer {TOKEN}"}
@@ -134,3 +142,29 @@ def test_ingest_disabled_without_token(client):
     app.dependency_overrides[get_settings] = lambda: Settings(ingest_token=None)
     response = client.post("/internal/ingest", json=result([txn()]), headers=AUTH)
     assert response.status_code == 503
+
+
+def test_rules_categorize_new_transactions_and_memo_is_kept(client, session):
+    rent = Category(name="Rent")
+    dining = Category(name="Dining")
+    session.add_all([rent, dining])
+    session.flush()
+    session.add_all(
+        [
+            CategorizationRule(match_pattern="aroma", category_id=dining.id),
+            CategorizationRule(match_pattern="שכר דירה", category_id=rent.id),
+        ]
+    )
+    session.commit()
+
+    transfer = txn(identifier=2, description="העברה", memo="  שכר דירה   ספטמבר ")
+    post(client, result([txn(), transfer, txn(identifier=3, description="Other")]))
+
+    rows = session.scalars(select(Transaction).order_by(Transaction.id)).all()
+    assert [(t.description, t.category_id) for t in rows] == [
+        ("Aroma Tel Aviv", dining.id),
+        ("העברה", rent.id),
+        ("Other", None),
+    ]
+    assert rows[1].memo == "שכר דירה ספטמבר"
+    assert not any(t.category_manual for t in rows)

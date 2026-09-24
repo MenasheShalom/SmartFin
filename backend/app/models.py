@@ -14,6 +14,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    false,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -26,6 +27,14 @@ Money = Numeric(12, 2)
 class AccountType(StrEnum):
     BANK = "bank"
     CREDIT_CARD = "credit_card"
+
+
+class CategoryKind(StrEnum):
+    EXPENSE = "expense"
+    INCOME = "income"
+    # Money moving between your own accounts, e.g. paying the card bill from the bank.
+    # Kept out of spending so a card purchase isn't counted twice.
+    TRANSFER = "transfer"
 
 
 class AlertType(StrEnum):
@@ -67,6 +76,10 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(100))
     # Self-reference for subcategories, e.g. Food -> Groceries
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"))
+    # Subcategories share their parent's kind
+    kind: Mapped[CategoryKind] = mapped_column(
+        String(20), default=CategoryKind.EXPENSE, server_default=CategoryKind.EXPENSE
+    )
 
     parent: Mapped["Category | None"] = relationship(remote_side=[id], back_populates="children")
     children: Mapped[list["Category"]] = relationship(back_populates="parent")
@@ -86,7 +99,11 @@ class Transaction(Base):
     description: Mapped[str] = mapped_column(Text)
     # The scraper's original text, kept so rules can re-categorize later
     raw_description: Mapped[str] = mapped_column(Text)
+    # Extra detail some banks put here, e.g. who a transfer went to
+    memo: Mapped[str | None] = mapped_column(Text)
     category_id: Mapped[int | None] = mapped_column(ForeignKey("categories.id"), index=True)
+    # Set by hand: rules never overwrite it
+    category_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
 
     account: Mapped[Account] = relationship(back_populates="transactions")
@@ -94,12 +111,14 @@ class Transaction(Base):
 
 
 class CategorizationRule(Base):
-    """String/regex match against raw_description, applied on ingest."""
+    """String/regex match against raw_description and memo, applied on ingest."""
 
     __tablename__ = "categorization_rules"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     match_pattern: Mapped[str] = mapped_column(String(255))
+    # Plain patterns match anywhere in the text, ignoring case and extra spaces
+    is_regex: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     category_id: Mapped[int] = mapped_column(ForeignKey("categories.id"))
     # Higher priority wins when several rules match
     priority: Mapped[int] = mapped_column(Integer, default=0)

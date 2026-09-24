@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.ingest import IngestSummary, ScrapeResult, ingest
+from app.routers import budgets, categories, rules, transactions
 
 app = FastAPI(title="SmartFin")
+for router in (categories.router, rules.router, transactions.router, budgets.router):
+    app.include_router(router)
 
 
 @app.get("/health")
