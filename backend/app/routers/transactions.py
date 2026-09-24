@@ -69,6 +69,10 @@ def list_transactions(
     # Includes its subcategories
     category_id: int | None = None,
     uncategorized: bool = False,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    # Matches the description or memo
+    q: Annotated[str | None, Query(max_length=100)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[TransactionOut]:
@@ -85,6 +89,19 @@ def list_transactions(
         )
     if uncategorized:
         query = query.where(Transaction.category_id.is_(None))
+    if date_from is not None:
+        query = query.where(Transaction.date >= date_from)
+    if date_to is not None:
+        query = query.where(Transaction.date <= date_to)
+    if q and q.strip():
+        escaped = q.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        pattern = f"%{escaped}%"
+        query = query.where(
+            or_(
+                Transaction.description.ilike(pattern, escape="\\"),
+                Transaction.memo.ilike(pattern, escape="\\"),
+            )
+        )
     query = query.order_by(Transaction.date.desc(), Transaction.id.desc())
     return session.scalars(query.limit(limit).offset(offset)).all()
 

@@ -80,6 +80,9 @@ class Category(Base):
     kind: Mapped[CategoryKind] = mapped_column(
         String(20), default=CategoryKind.EXPENSE, server_default=CategoryKind.EXPENSE
     )
+    # Fixed bills (rent, insurance) are planned monthly; the rest is day-to-day spending
+    # that the weekly allowance covers. Only meaningful for expense categories.
+    is_fixed: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     parent: Mapped["Category | None"] = relationship(remote_side=[id], back_populates="children")
     children: Mapped[list["Category"]] = relationship(back_populates="parent")
@@ -172,3 +175,39 @@ class ScrapeRun(Base):
     status: Mapped[ScrapeStatus] = mapped_column(String(20), default=ScrapeStatus.RUNNING)
     transactions_added: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     error_message: Mapped[str | None] = mapped_column(Text)
+
+
+class MonthlyPlan(Base):
+    """The user's plan for one month: expected income (unset = learned from history)
+    and how much to put aside."""
+
+    __tablename__ = "monthly_plans"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    # First day of the month
+    month: Mapped[date] = mapped_column(Date, unique=True)
+    expected_income: Mapped[Decimal | None] = mapped_column(Money)
+    savings_goal: Mapped[Decimal] = mapped_column(Money, default=Decimal(0), server_default="0")
+
+
+class BalanceSnapshot(Base):
+    """An account's balance as seen on a sync day, for month-end balance history."""
+
+    __tablename__ = "balance_snapshots"
+    __table_args__ = (UniqueConstraint("account_id", "date"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), index=True)
+    date: Mapped[date] = mapped_column(Date)
+    balance: Mapped[Decimal] = mapped_column(Money)
+
+
+class UserSession(Base):
+    """A logged-in browser. Only a hash of the cookie's token is stored."""
+
+    __tablename__ = "sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

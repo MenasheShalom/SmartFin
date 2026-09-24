@@ -102,3 +102,15 @@ def test_delete_refuses_a_category_in_use(client, session):
     assert response.json()["detail"] == (
         "Category is still used by 1 subcategories, 1 rules, 1 transactions"
     )
+
+
+def test_fixed_flag_is_inherited_and_cascades(client):
+    housing = create(client, name="דיור", is_fixed=True).json()
+    rent = create(client, name="שכירות", parent_id=housing["id"]).json()
+    assert rent["is_fixed"] is True
+    fun = create(client, name="בילויים").json()
+    assert fun["is_fixed"] is False
+
+    client.patch(f"/api/categories/{housing['id']}", json={"is_fixed": False})
+    flags = {c["id"]: c["is_fixed"] for c in client.get("/api/categories").json()}
+    assert flags[rent["id"]] is False

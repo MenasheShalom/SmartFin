@@ -21,6 +21,7 @@ class CategoryOut(BaseModel):
     name: str
     parent_id: int | None
     kind: CategoryKind
+    is_fixed: bool
 
 
 class CategoryCreate(BaseModel):
@@ -28,11 +29,15 @@ class CategoryCreate(BaseModel):
     parent_id: int | None = None
     # Top-level only; subcategories take their parent's kind. Defaults to expense.
     kind: CategoryKind | None = None
+    # Fixed monthly bill rather than day-to-day spending; subcategories default to the parent's
+    is_fixed: bool | None = None
 
 
 class CategoryUpdate(BaseModel):
     name: Name | None = None
     kind: CategoryKind | None = None
+    # Changing a parent changes its subcategories too
+    is_fixed: bool | None = None
 
 
 def tree_order(categories: list[Category]) -> list[Category]:
@@ -75,6 +80,7 @@ def list_categories(session: SessionDep) -> list[CategoryOut]:
 def create_category(body: CategoryCreate, session: SessionDep) -> CategoryOut:
     if body.parent_id is None:
         kind = body.kind or CategoryKind.EXPENSE
+        is_fixed = bool(body.is_fixed)
     else:
         parent = existing_category(session, body.parent_id)
         if parent.parent_id is not None:
@@ -82,9 +88,10 @@ def create_category(body: CategoryCreate, session: SessionDep) -> CategoryOut:
         if body.kind is not None and body.kind != parent.kind:
             raise HTTPException(422, f"A subcategory takes its parent's kind ({parent.kind})")
         kind = parent.kind
+        is_fixed = parent.is_fixed if body.is_fixed is None else body.is_fixed
 
     ensure_unique_name(session, body.name, body.parent_id)
-    category = Category(name=body.name, parent_id=body.parent_id, kind=kind)
+    category = Category(name=body.name, parent_id=body.parent_id, kind=kind, is_fixed=is_fixed)
     session.add(category)
     session.commit()
     return category
@@ -111,6 +118,10 @@ def update_category(category_id: int, body: CategoryUpdate, session: SessionDep)
             )
         for member in family:
             member.kind = body.kind
+
+    if body.is_fixed is not None:
+        for member in [category, *category.children]:
+            member.is_fixed = body.is_fixed
 
     session.commit()
     return category

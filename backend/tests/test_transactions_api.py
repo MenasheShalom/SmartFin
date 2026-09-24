@@ -95,3 +95,19 @@ def test_update_validation(client, session):
     assert client.patch(url, json={"category_id": 999}).status_code == 422
     assert client.patch(url, json={}).status_code == 422
     assert client.patch("/api/transactions/999", json={"category_id": None}).status_code == 404
+
+
+def test_search_and_date_range(client, session):
+    account = make_account(session)
+    shufersal = make_txn(session, account, "שופרסל דיל", -100, day=date(2026, 9, 3))
+    memo = make_txn(session, account, "העברה", -50, day=date(2026, 9, 10), memo="שכר דירה 100%")
+    make_txn(session, account, "Aroma", -20, day=date(2026, 9, 20))
+    session.commit()
+
+    assert ids(client.get("/api/transactions?q=שופרסל")) == [shufersal.id]
+    assert ids(client.get("/api/transactions?q=דירה")) == [memo.id]
+    # % is a literal character, not a wildcard
+    assert ids(client.get("/api/transactions?q=100%")) == [memo.id]
+    assert ids(client.get("/api/transactions?q=_")) == []
+    in_range = client.get("/api/transactions?date_from=2026-09-03&date_to=2026-09-10")
+    assert ids(in_range) == [memo.id, shufersal.id]

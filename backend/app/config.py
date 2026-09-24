@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # Scraped timestamps are converted to calendar dates in this zone
     timezone: str = "Asia/Jerusalem"
 
+    # --- Login ---
+    # From `python -m app.password`; login is refused until it is set
+    app_password_hash: str | None = None
+    # Send the session cookie only over HTTPS (turn on behind Tailscale serve or another TLS proxy)
+    cookie_secure: bool = False
+
     # --- Alerts (each check is off while its threshold is unset) ---
     # Percent-of-budget levels that trigger an alert, e.g. "80,100"
     budget_alert_levels: str = "80,100"

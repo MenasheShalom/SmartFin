@@ -70,7 +70,7 @@ def test_failed_sync_alerts_once_a_day(client, session, channel):
 
     [alert] = alerts(session)
     assert alert.type == AlertType.SCRAPE_FAILURE
-    assert alert.message.startswith("Sync failed for visaCal: INVALID_PASSWORD")
+    assert alert.message.startswith("הסנכרון של כאל נכשל: INVALID_PASSWORD")
     assert alert.sent_at is not None
     assert channel.sent == [alert.message]
 
@@ -90,8 +90,8 @@ def test_budget_alerts_at_each_level_once(client, session, channel, monkeypatch)
 
     messages = [a.message for a in alerts(session)]
     assert messages == [
-        "Food: ₪850 of ₪1,000 spent in September 2026 (80% of budget). ₪150 left.",
-        "Over budget: Food, ₪1,060 of ₪1,000 spent in September 2026.",
+        "Food: הוצאת ₪850 מתוך ₪1,000 בספטמבר 2026 (80% מהתקציב). נשארו ₪150.",
+        "חריגה מהתקציב: Food, הוצאת ₪1,060 מתוך ₪1,000 בספטמבר 2026.",
     ]
     assert channel.sent == messages
 
@@ -119,7 +119,7 @@ def test_low_balance_weekly_for_bank_accounts_only(client, session, channel):
 
     [alert] = alerts(session)
     assert alert.type == AlertType.LOW_BALANCE
-    assert alert.message == "Low balance: leumi account …8901 is at ₪120 (alert threshold ₪500)."
+    assert alert.message == "יתרה נמוכה: בנק לאומי …8901 עומדת על ₪120 (סף ההתראה ₪500)."
     assert alert.dedupe_key.endswith(":2026-W38")
 
 
@@ -141,7 +141,7 @@ def test_large_transactions(client, session, channel):
     sync(client, result(batch))  # already stored: not new, no repeat
 
     assert [a.message for a in alerts(session)] == [
-        "Large charge: ₪2,400.50 at IKEA Netanya on 02/09/2026."
+        "חיוב גדול: ₪2,400.50 ב-IKEA Netanya, 02/09/2026."
     ]
 
 
@@ -274,3 +274,16 @@ def test_email_channel(monkeypatch):
     assert sent["tls"] is True
     assert sent["message"]["Subject"] == "SmartFin: Over budget: Food"
     assert sent["message"]["From"] == "me@example.com"
+
+
+def test_fixed_bills_never_raise_budget_alerts(client, session, channel, monkeypatch):
+    configure()
+    rent = Category(name="שכירות", is_fixed=True)
+    session.add(rent)
+    session.flush()
+    session.add(Budget(category_id=rent.id, month=date(2026, 9, 1), limit_amount=Decimal(5000)))
+    session.commit()
+    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None: rent.id)
+
+    sync(client, result([txn(identifier=1, chargedAmount=-5000)]))
+    assert alerts(session) == []

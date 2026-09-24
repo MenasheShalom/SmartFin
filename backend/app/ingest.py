@@ -11,7 +11,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.categorize import Categorizer
-from app.models import Account, AccountType, ScrapeRun, ScrapeStatus, Transaction
+from app.models import (
+    Account,
+    AccountType,
+    BalanceSnapshot,
+    ScrapeRun,
+    ScrapeStatus,
+    Transaction,
+)
 
 # israeli-bank-scrapers company ids that are card issuers rather than banks
 CARD_COMPANIES = {"amex", "behatsdaa", "beyahadBishvilha", "isracard", "max", "visaCal"}
@@ -123,6 +130,19 @@ def get_or_create_account(session: Session, institution: str, account_number: st
     return account
 
 
+def record_balance(session: Session, account: Account, day: date, balance: Decimal) -> None:
+    """One snapshot per account per day; a later sync the same day replaces it."""
+    snapshot = session.scalars(
+        select(BalanceSnapshot).where(
+            BalanceSnapshot.account_id == account.id, BalanceSnapshot.date == day
+        )
+    ).one_or_none()
+    if snapshot is None:
+        session.add(BalanceSnapshot(account_id=account.id, date=day, balance=balance))
+    else:
+        snapshot.balance = balance
+
+
 def ingest(
     session: Session, result: ScrapeResult, tz: ZoneInfo
 ) -> tuple[IngestSummary, list[Transaction]]:
@@ -149,6 +169,7 @@ def ingest(
         account = get_or_create_account(session, result.institution, scraped.account_number)
         if scraped.balance is not None:
             account.balance = scraped.balance
+            record_balance(session, account, local_date(result.finished_at, tz), scraped.balance)
         account.last_synced_at = result.finished_at
 
         # Pending charges can still change amount or date, so only settled ones are stored.

@@ -15,13 +15,23 @@ from app.db import get_session
 from app.ingest import IngestSummary, ScrapeResult, ingest
 from app.months import get_today
 from app.notify import channels, send_pending
-from app.routers import alerts, budgets, categories, rules, transactions
+from app.auth import require_user
+from app.routers import accounts, alerts, auth, budgets, cashflow, categories, rules, transactions
 
 log = logging.getLogger(__name__)
 
 app = FastAPI(title="SmartFin")
-for router in (categories.router, rules.router, transactions.router, budgets.router, alerts.router):
-    app.include_router(router)
+app.include_router(auth.router)
+for router in (
+    categories.router,
+    rules.router,
+    transactions.router,
+    budgets.router,
+    alerts.router,
+    accounts.router,
+    cashflow.router,
+):
+    app.include_router(router, dependencies=[Depends(require_user)])
 
 
 @app.get("/health")

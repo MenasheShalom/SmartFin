@@ -57,5 +57,5 @@ def send_test_alert(settings: Annotated[Settings, Depends(get_settings)]) -> Tes
         raise HTTPException(
             400, "No alert channel configured: set TELEGRAM_* or SMTP_* and ALERT_EMAIL_TO"
         )
-    delivered = deliver(configured, "SmartFin test alert: notifications are working.")
+    delivered = deliver(configured, "התראת בדיקה מ-SmartFin: ההתראות עובדות.")
     return TestResult(channels=[c.name for c in configured], delivered=delivered)

@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app import models  # noqa: F401
+from app.auth import require_user
 from app.db import Base, get_session
 from app.main import app
 
@@ -40,5 +41,7 @@ def client(engine):
             yield session
 
     app.dependency_overrides[get_session] = override
+    # Logged in; tests/test_auth.py covers the real check
+    app.dependency_overrides[require_user] = lambda: None
     yield TestClient(app)
     app.dependency_overrides.clear()
