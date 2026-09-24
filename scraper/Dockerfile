@@ -6,7 +6,9 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
-    SCRAPER_OUTPUT_DIR=/app/output
+    SCRAPER_OUTPUT_DIR=/app/output \
+    SCRAPER_ACCOUNTS_FILE=/app/config/accounts.json \
+    TZ=Asia/Jerusalem
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -14,4 +16,4 @@ RUN npm ci --omit=dev
 
 COPY src ./src
 
-CMD ["node", "src/scrape-once.js"]
+CMD ["node", "src/main.js"]

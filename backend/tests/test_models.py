@@ -17,7 +17,7 @@ from app.models import (
 
 
 def test_transaction_round_trip(session):
-    account = Account(institution="leumi", account_type=AccountType.BANK)
+    account = Account(institution="leumi", account_number="12-345", account_type=AccountType.BANK)
     food = Category(name="Food")
     groceries = Category(name="Groceries", parent=food)
     session.add_all([account, food, groceries])
@@ -26,6 +26,7 @@ def test_transaction_round_trip(session):
     session.add(
         Transaction(
             account_id=account.id,
+            external_id="abc",
             date=date(2026, 9, 1),
             amount=Decimal("-123.45"),
             description="Shufersal",
@@ -45,18 +46,19 @@ def test_transaction_round_trip(session):
 
 
 def test_rule_and_scrape_run_defaults(session):
-    account = Account(institution="max", account_type=AccountType.CREDIT_CARD)
+    account = Account(institution="max", account_number="1234", account_type=AccountType.CREDIT_CARD)
     category = Category(name="Transport")
     session.add_all([account, category])
     session.flush()
 
     rule = CategorizationRule(match_pattern="PAZ|DELEK", category_id=category.id)
-    run = ScrapeRun(account_id=account.id)
+    run = ScrapeRun(institution="max")
     session.add_all([rule, run])
     session.commit()
 
     assert rule.priority == 0
     assert run.status == ScrapeStatus.RUNNING
+    assert run.transactions_added == 0
     assert run.started_at is not None
 
 

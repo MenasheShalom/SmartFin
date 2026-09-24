@@ -2,6 +2,7 @@
 .env
 data/
 scraper/output/
+scraper/config/accounts.json
 
 # Python
 __pycache__/

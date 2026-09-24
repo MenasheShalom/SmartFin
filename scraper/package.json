@@ -8,6 +8,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "start": "node src/main.js",
     "scrape-once": "node src/scrape-once.js",
     "test": "node --test"
   },

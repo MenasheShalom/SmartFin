@@ -20,36 +20,46 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      INGEST_TOKEN: ${INGEST_TOKEN}
     depends_on:
       db:
         condition: service_healthy
     # Localhost only until there's a dashboard; open to the LAN (or Tailscale) later.
     ports:
       - "127.0.0.1:8000:8000"
-    networks: [internal, web]
+    networks: [internal, ingest, web]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 30s
       timeout: 5s
       retries: 3
 
-  # Phase 1: run by hand with `docker compose run --rm scraper`.
-  # It has its own network with internet access and no route to the database or API.
+  # Scrapes every account nightly at SCRAPE_TIME (Israel time) and sends the results to
+  # the backend. It holds the bank logins; it has internet access and can reach the
+  # backend's ingest endpoint, but has no route to the database.
   scraper:
     build: ./scraper
-    profiles: [manual]
+    restart: unless-stopped
     environment:
-      SCRAPER_COMPANY: ${SCRAPER_COMPANY}
-      SCRAPER_CREDENTIALS: ${SCRAPER_CREDENTIALS}
+      BACKEND_URL: http://backend:8000
+      INGEST_TOKEN: ${INGEST_TOKEN}
+      SCRAPE_TIME: ${SCRAPE_TIME:-03:00}
       SCRAPER_DAYS_BACK: ${SCRAPER_DAYS_BACK:-30}
     volumes:
+      - ./scraper/config/accounts.json:/app/config/accounts.json:ro
       - ./scraper/output:/app/output
+    depends_on:
+      backend:
+        condition: service_healthy
     shm_size: 512mb
-    networks: [scraper]
+    networks: [scraper, ingest]
 
 networks:
   # No outbound internet: only backend and db live here.
   internal:
+    internal: true
+  # Scraper -> backend only, no outbound internet
+  ingest:
     internal: true
   web: {}
   scraper: {}
