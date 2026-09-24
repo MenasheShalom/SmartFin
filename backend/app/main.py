@@ -1,4 +1,6 @@
+import logging
 import secrets
+from datetime import date
 from zoneinfo import ZoneInfo
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -7,13 +9,18 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.alerts import check_budgets, check_large_transactions, check_low_balance, check_scrape_failure
 from app.config import Settings, get_settings
 from app.db import get_session
 from app.ingest import IngestSummary, ScrapeResult, ingest
-from app.routers import budgets, categories, rules, transactions
+from app.months import get_today
+from app.notify import channels, send_pending
+from app.routers import alerts, budgets, categories, rules, transactions
+
+log = logging.getLogger(__name__)
 
 app = FastAPI(title="SmartFin")
-for router in (categories.router, rules.router, transactions.router, budgets.router):
+for router in (categories.router, rules.router, transactions.router, budgets.router, alerts.router):
     app.include_router(router)
 
 
@@ -42,5 +49,21 @@ def ingest_scrape_result(
     result: ScrapeResult,
     session: Session = Depends(get_session),
     settings: Settings = Depends(get_settings),
+    today: date = Depends(get_today),
 ) -> IngestSummary:
-    return ingest(session, result, ZoneInfo(settings.timezone))
+    summary, added = ingest(session, result, ZoneInfo(settings.timezone))
+    # Alerts must never fail the sync that triggered them
+    try:
+        if result.success:
+            check_budgets(session, settings, today)
+            check_low_balance(session, settings, today)
+            check_large_transactions(session, settings, added)
+        else:
+            error = ": ".join(p for p in (result.error_type, result.error_message) if p)
+            check_scrape_failure(session, result.institution, error or "unknown error", today)
+        send_pending(session, channels(settings))
+        session.commit()
+    except Exception:
+        log.exception("Alert checks failed")
+        session.rollback()
+    return summary

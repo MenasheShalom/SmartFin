@@ -151,6 +151,11 @@ class Alert(Base):
     )
     message: Mapped[str] = mapped_column(Text)
     acknowledged: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Identifies what the alert is about, so the same thing never alerts twice,
+    # e.g. "budget:2026-09:5:100" or "low_balance:3:2026-W39"
+    dedupe_key: Mapped[str] = mapped_column(String(200), unique=True)
+    # When Telegram/email delivery succeeded; unset alerts are retried after the next sync
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ScrapeRun(Base):

@@ -19,7 +19,7 @@ Design doc: [SmartFin — Architecture & Build Strategy](https://claude.ai/artif
 - [x] **Phase 1: Foundation.** Compose skeleton, data model and migrations, one-shot manual scrape
 - [x] **Phase 2: Sync.** Nightly scrape of every account into Postgres, de-duplication, scrape logging
 - [x] **Phase 3: Categorization and budgets.** Rules, manual overrides, monthly budgets, spend-vs-budget
-- [ ] Phase 4: Alerts (Telegram / email)
+- [x] **Phase 4: Alerts.** Budget, low balance, large charge and failed sync alerts over Telegram / email
 - [ ] Phase 5: Dashboard
 - [ ] Phase 6: Hardening (backups, credential encryption, failure alerts)
 
@@ -123,6 +123,30 @@ refunds reduce it. Income and transfers never count as spending.
 
 The API has no login yet. Only the machine itself (`127.0.0.1`) and SmartFin's own containers
 can reach it, until the dashboard phase adds authentication and opens it to the LAN.
+
+## Alerts
+
+After every sync the backend checks for:
+
+| Alert | When | How often |
+|---|---|---|
+| Budget | a budget reaches each level in `BUDGET_ALERT_LEVELS` (default 80% and 100%) | once per level per budget per month |
+| Low balance | a bank account is below `LOW_BALANCE_THRESHOLD` | at most weekly while it stays low |
+| Large charge | a new expense is at or above `LARGE_TRANSACTION_THRESHOLD` | once per transaction |
+| Failed sync | a bank login or scrape fails | once per bank per day |
+
+Leave a threshold empty to turn that check off. Income and transfers never count as large
+charges, so tag your card bill as Transfers.
+
+Alerts are stored and listed at `GET /api/alerts`, and sent over Telegram and/or email when
+configured in `.env`. A send that fails is retried after the next sync, for up to three days.
+To check your setup:
+
+```sh
+curl -X POST localhost:8000/api/alerts/test    # {"channels":["telegram"],"delivered":true}
+curl localhost:8000/api/alerts?unacknowledged=true
+curl -X POST localhost:8000/api/alerts/3/acknowledge
+```
 
 ## Development
 

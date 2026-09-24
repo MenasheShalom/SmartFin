@@ -123,7 +123,10 @@ def get_or_create_account(session: Session, institution: str, account_number: st
     return account
 
 
-def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummary:
+def ingest(
+    session: Session, result: ScrapeResult, tz: ZoneInfo
+) -> tuple[IngestSummary, list[Transaction]]:
+    """Store one scrape result. Returns the summary and the newly added transactions."""
     run = ScrapeRun(
         institution=result.institution,
         started_at=result.started_at,
@@ -137,10 +140,11 @@ def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummar
             part for part in (result.error_type, result.error_message) if part
         ) or "unknown error"
         session.commit()
-        return IngestSummary(run_id=run.id, status=run.status)
+        return IngestSummary(run_id=run.id, status=run.status), []
 
     summary = IngestSummary(run_id=0, status=ScrapeStatus.SUCCESS, accounts=len(result.accounts))
     categorizer = Categorizer.load(session)
+    added: list[Transaction] = []
     for scraped in result.accounts:
         account = get_or_create_account(session, result.institution, scraped.account_number)
         if scraped.balance is not None:
@@ -164,7 +168,7 @@ def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummar
                 summary.duplicates += 1
                 continue
             memo = clean_description(txn.memo or "") or None
-            session.add(
+            added.append(
                 Transaction(
                     account_id=account.id,
                     external_id=external_id,
@@ -177,10 +181,11 @@ def ingest(session: Session, result: ScrapeResult, tz: ZoneInfo) -> IngestSummar
                     category_id=categorizer.category_for(txn.description, memo),
                 )
             )
-            summary.added += 1
 
+    session.add_all(added)
+    summary.added = len(added)
     run.status = ScrapeStatus.SUCCESS
     run.transactions_added = summary.added
     session.commit()
     summary.run_id = run.id
-    return summary
+    return summary, added
