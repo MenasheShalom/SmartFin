@@ -80,7 +80,17 @@ function PlanBody({ flow, onEdit }: { flow: CashFlow; onEdit: (e: Editing) => vo
                 <span className="list-row-main">
                   <span className="list-row-title">{item.name}</span>
                   <span className={`list-row-sub${item.status === "paid" ? " pos" : ""}`}>
-                    {item.status === "paid" ? "שולם" : item.status === "partial" ? <>שולם חלקית · <Money value={item.paid} decimals={0} /></> : "צפוי"}
+                    {item.status === "paid" ? (
+                      "שולם"
+                    ) : item.status === "partial" ? (
+                      <>
+                        שולם חלקית · <Money value={item.paid} decimals={0} />
+                      </>
+                    ) : item.status === "skipped" ? (
+                      "לא החודש"
+                    ) : (
+                      "צפוי"
+                    )}
                   </span>
                 </span>
                 <span className="list-row-end">

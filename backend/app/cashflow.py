@@ -29,7 +29,7 @@ class FixedItem(BaseModel):
     # This month's budget for the category, else last month's spending
     expected: Decimal
     paid: Decimal
-    status: str  # "paid" | "partial" | "expected"
+    status: str  # "paid" | "partial" | "expected" | "skipped" (budgeted at 0 this month)
 
 
 class Week(BaseModel):
@@ -153,8 +153,12 @@ def compute(session: Session, start: date, today: date) -> CashFlow:
         expected = budgets.get(category_id, money(max(-previous_net[category_id], Decimal(0))))
         paid = money(max(-net[category_id], Decimal(0)))
         if expected <= 0 and paid <= 0:
-            continue
-        status = "expected" if paid <= 0 else ("paid" if paid >= expected else "partial")
+            # Set to 0 on purpose: keep it listed so it can be changed back
+            if category_id not in budgets:
+                continue
+            status = "skipped"
+        else:
+            status = "expected" if paid <= 0 else ("paid" if paid >= expected else "partial")
         fixed_items.append(
             FixedItem(
                 category_id=category_id,

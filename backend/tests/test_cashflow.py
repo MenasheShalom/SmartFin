@@ -117,6 +117,13 @@ def test_past_month_projects_actual_spending(client, setup):
     assert flow["projected_variable"] == flow["variable_spent"]
 
 
+def test_a_bill_budgeted_at_zero_stays_listed(client, setup):
+    client.put(f"/api/budgets/2026-09/{setup['insurance'].id}", json={"limit_amount": 0})
+    items = {i["name"]: i for i in client.get("/api/cashflow").json()["fixed_items"]}
+    assert items["ביטוח"]["status"] == "skipped"
+    assert items["ביטוח"]["expected"] == "0.00"
+
+
 def test_plan_validation(client):
     assert client.put("/api/plans/2026-13", json={}).status_code == 422
     assert client.put("/api/plans/2026-09", json={"savings_goal": -1}).status_code == 422

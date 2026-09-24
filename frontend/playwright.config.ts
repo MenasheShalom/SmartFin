@@ -16,6 +16,12 @@ export default defineConfig({
   },
   projects: [
     { name: "phone", use: { ...devices["Pixel 7"], browserName: "chromium" }, testIgnore: /layout\.spec\.ts/ },
+    {
+      name: "phone-dark",
+      use: { ...devices["Pixel 7"], browserName: "chromium", colorScheme: "dark" },
+      testMatch: /app\.spec\.ts/,
+      grep: /passes axe/,
+    },
     { name: "desktop", use: { viewport: { width: 1280, height: 900 }, browserName: "chromium" }, testMatch: /layout\.spec\.ts/ },
   ],
 });

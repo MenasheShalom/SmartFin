@@ -42,7 +42,7 @@ export interface FixedItem {
   name: string;
   expected: Money;
   paid: Money;
-  status: "paid" | "partial" | "expected";
+  status: "paid" | "partial" | "expected" | "skipped";
 }
 
 export interface Week {
