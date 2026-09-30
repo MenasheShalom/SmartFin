@@ -1,5 +1,7 @@
 """Serve the built web app: hashed assets cached for a year, index.html for app routes."""
 
+import os
+
 from starlette.exceptions import HTTPException
 from starlette.responses import Response
 from starlette.staticfiles import StaticFiles
@@ -23,6 +25,8 @@ RESERVED = ("api/", "internal/", "health", "docs", "openapi.json", "redoc")
 
 class SPAStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope: Scope) -> Response:
+        # StaticFiles joins the path with the OS separator (backslashes on Windows)
+        path = path.replace(os.sep, "/")
         if path.startswith(RESERVED):
             raise HTTPException(404)
         try:
