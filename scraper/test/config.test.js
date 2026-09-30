@@ -9,10 +9,10 @@ test('parses a valid accounts file', () => {
   assert.deepEqual(parseAccounts(JSON.stringify([leumi])), [leumi]);
 });
 
-test('rejects malformed or empty accounts files', () => {
+test('rejects malformed accounts files; an empty list is fine', () => {
   assert.throws(() => parseAccounts('not json'), /not valid JSON/);
-  assert.throws(() => parseAccounts('[]'), /non-empty JSON array/);
-  assert.throws(() => parseAccounts('{}'), /non-empty JSON array/);
+  assert.deepEqual(parseAccounts('[]'), []);
+  assert.throws(() => parseAccounts('{}'), /must be a JSON array/);
   assert.throws(() => parseAccounts('[1]'), /accounts\[0\] must be an object/);
 });
 

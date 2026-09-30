@@ -30,6 +30,10 @@ INSTITUTIONS = {
 }
 
 
+# Credit cards and card clubs; every other company is a bank
+CARD_COMPANIES = {"max", "visaCal", "isracard", "amex", "beyahadBishvilha", "behatsdaa"}
+
+
 def institution_label(company_id: str) -> str:
     return INSTITUTIONS.get(company_id, company_id)
 

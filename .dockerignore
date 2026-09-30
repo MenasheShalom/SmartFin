@@ -11,4 +11,5 @@ frontend/playwright-report/
 backend/tests/
 scraper/output/
 scraper/config/accounts.json
-scraper/config/accounts.json.enc
+scraper/config/accounts.json.enc*
+scraper/keys/

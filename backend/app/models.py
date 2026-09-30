@@ -202,6 +202,19 @@ class BalanceSnapshot(Base):
     balance: Mapped[Decimal] = mapped_column(Money)
 
 
+class AppUser(Base):
+    """The one login, created from the web app on first start. Always id 1, so a second
+    sign-up can't slip in beside it."""
+
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=False)
+    username: Mapped[str] = mapped_column(String(64))
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class UserSession(Base):
     """A logged-in browser. Only a hash of the cookie's token is stored."""
 

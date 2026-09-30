@@ -64,12 +64,15 @@ export async function runAll(accounts, settings, {
   dryRun = false,
   log = console,
   now = () => new Date(),
+  onStart = () => {},
+  onResult = () => {},
 } = {}) {
   const startDate = now();
   startDate.setDate(startDate.getDate() - settings.daysBack);
   let allOk = true;
 
   for (const account of accounts) {
+    onStart(account);
     const startedAt = now();
     log.log(`[${account.company}] scraping since ${startDate.toISOString().slice(0, 10)}`);
 
@@ -93,7 +96,10 @@ export async function runAll(accounts, settings, {
     if (settings.saveRaw || dryRun) {
       log.log(`[${account.company}] raw result saved to ${await saveRaw(settings, account.company, result)}`);
     }
-    if (dryRun) continue;
+    if (dryRun) {
+      onResult(account, payload);
+      continue;
+    }
 
     try {
       const summary = await ingest(settings, payload);
@@ -104,6 +110,7 @@ export async function runAll(accounts, settings, {
       allOk = false;
       log.error(`[${account.company}] could not send results to the backend: ${err.message}`);
     }
+    onResult(account, payload);
   }
   return allOk;
 }

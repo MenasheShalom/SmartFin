@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef } from "react";
 
 import { api } from "./client";
 import type {
@@ -7,6 +8,8 @@ import type {
   CashFlow,
   Category,
   CategoryKind,
+  Connection,
+  Connections,
   MonthHistory,
   Rule,
   SyncStatus,
@@ -16,12 +19,14 @@ import type {
 
 export const keys = {
   me: ["me"] as const,
+  authStatus: ["auth-status"] as const,
   cashflow: (month: string) => ["cashflow", month] as const,
   history: ["history"] as const,
   categories: ["categories"] as const,
   rules: ["rules"] as const,
   accounts: ["accounts"] as const,
   syncStatus: ["sync-status"] as const,
+  connections: ["connections"] as const,
   alerts: ["alerts"] as const,
   transactions: (params: TransactionQuery) => ["transactions", params] as const,
 };
@@ -48,8 +53,16 @@ function query(params: object): string {
   return s ? `?${s}` : "";
 }
 
-export const useMe = () =>
-  useQuery({ queryKey: keys.me, queryFn: () => api<{ authenticated: boolean }>("/api/auth/me"), retry: false });
+export interface Me {
+  authenticated: boolean;
+  username: string | null;
+}
+
+export const useMe = () => useQuery({ queryKey: keys.me, queryFn: () => api<Me>("/api/auth/me"), retry: false });
+
+/** Before the first sign-up there is no login yet: the login screen offers to create one */
+export const useAuthStatus = () =>
+  useQuery({ queryKey: keys.authStatus, queryFn: () => api<{ setup_required: boolean }>("/api/auth/status") });
 
 export const useCashFlow = (month: string) =>
   useQuery({ queryKey: keys.cashflow(month), queryFn: () => api<CashFlow>(`/api/cashflow${query({ month })}`) });
@@ -71,6 +84,51 @@ export const useAccounts = () =>
 
 export const useSyncStatus = () =>
   useQuery({ queryKey: keys.syncStatus, queryFn: () => api<SyncStatus[]>("/api/sync-status") });
+
+/** Polls while a sync is waiting or running; when one ends, what it fetched shows everywhere */
+export function useConnections() {
+  const client = useQueryClient();
+  const wasSyncing = useRef(false);
+  const query = useQuery({
+    queryKey: keys.connections,
+    queryFn: () => api<Connections>("/api/connections"),
+    refetchInterval: (q) => (q.state.data?.connections.some((c) => c.sync) ? 3000 : false),
+  });
+  const syncing = query.data?.connections.some((c) => c.sync) ?? false;
+  useEffect(() => {
+    if (wasSyncing.current && !syncing) {
+      // New transactions and balances: refresh everything but the connections themselves
+      client.invalidateQueries({ predicate: (q) => q.queryKey[0] !== keys.connections[0] && q.queryKey[0] !== keys.me[0] });
+    }
+    wasSyncing.current = syncing;
+  }, [syncing, client]);
+  return query;
+}
+
+export function useConnectionMutations() {
+  const client = useQueryClient();
+  const onSuccess = () => client.invalidateQueries({ queryKey: keys.connections });
+  return {
+    add: useMutation({
+      mutationFn: (body: { company: string; credentials: Record<string, string> }) =>
+        api<Connection>("/api/connections", { method: "POST", body }),
+      onSuccess,
+    }),
+    update: useMutation({
+      mutationFn: ({ id, credentials }: { id: string; credentials: Record<string, string> }) =>
+        api<Connection>(`/api/connections/${id}`, { method: "PUT", body: { credentials } }),
+      onSuccess,
+    }),
+    remove: useMutation({
+      mutationFn: (id: string) => api(`/api/connections/${id}`, { method: "DELETE" }),
+      onSuccess,
+    }),
+    syncAll: useMutation({
+      mutationFn: () => api<Connection[]>("/api/connections/sync", { method: "POST" }),
+      onSuccess,
+    }),
+  };
+}
 
 export const useAlerts = () =>
   useQuery({ queryKey: keys.alerts, queryFn: () => api<Alert[]>("/api/alerts?limit=200") });
@@ -192,11 +250,33 @@ export function useAcknowledgeAlert() {
   });
 }
 
+interface Credentials {
+  username: string;
+  password: string;
+}
+
 export function useLogin() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (password: string) => api("/api/auth/login", { method: "POST", body: { password } }),
+    mutationFn: (body: Credentials) => api("/api/auth/login", { method: "POST", body }),
     onSuccess: () => client.resetQueries(),
+  });
+}
+
+export function useSetup() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: Credentials) => api("/api/auth/setup", { method: "POST", body }),
+    onSuccess: () => client.resetQueries(),
+  });
+}
+
+export function useUpdateAccount() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { current_password: string; username: string; new_password?: string }) =>
+      api<Me>("/api/auth/account", { method: "PUT", body }),
+    onSuccess: (me) => client.setQueryData(keys.me, me),
   });
 }
 

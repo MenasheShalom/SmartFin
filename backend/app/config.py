@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+psycopg://smartfin:smartfin@localhost:5432/smartfin"
     # Shared secret the scraper sends to POST /internal/ingest; ingest is off when unset
     ingest_token: str | None = None
+    # The scraper's API, for adding bank logins from the web app (it checks the same token)
+    scraper_url: str = "http://scraper:8080"
     # Scraped timestamps are converted to calendar dates in this zone
     timezone: str = "Asia/Jerusalem"
 
@@ -21,9 +23,7 @@ class Settings(BaseSettings):
     # Hourly check that alerts when no sync has finished for 30 hours
     sync_watchdog: bool = True
 
-    # --- Login ---
-    # From `python -m app.password`; login is refused until it is set
-    app_password_hash: str | None = None
+    # --- Login (the username and password are set in the web app on first start) ---
     # Send the session cookie only over HTTPS (turn on behind Tailscale serve or another TLS proxy)
     cookie_secure: bool = False
 

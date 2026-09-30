@@ -44,6 +44,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 - [x] **Phase 4: Alerts.** Budget, low balance, large charge and failed sync alerts over Telegram / email
 - [x] **Phase 5: The app.** Login, cash-flow plan, weekly view, history, categorizing, settings
 - [x] **Phase 6: Hardening.** Backups, encrypted bank logins, stalled-sync alerts, non-root image
+- [x] **Phase 7: Set up from the app.** Username and password, and bank and card logins, managed in the web app
 
 ## Setting it up
 
@@ -53,46 +54,53 @@ You need Docker with Docker Compose on the machine that will run SmartFin.
 
    ```sh
    cp .env.example .env
-   cp scraper/config/accounts.example.json scraper/config/accounts.json
    ```
 
    In `.env`, set `POSTGRES_PASSWORD` and `INGEST_TOKEN` (for each: `openssl rand -hex 32`).
-   In `accounts.json`, put your bank and card logins (fields per company below).
 
-2. **Build, and set your password.**
+2. **Build and start.**
 
    ```sh
    docker compose build
-   docker compose run --rm backend python -m app.password
-   ```
-
-   Paste the `APP_PASSWORD_HASH=...` line it prints into `.env`.
-
-3. **Start.**
-
-   ```sh
    docker compose up -d
    ```
 
-   Open `http://<server address>:8000` and log in. The first sync runs at `SCRAPE_TIME` (03:00 by
-   default); to fetch now, and a year back so the history has something to show:
+3. **Create your login.** Open `http://<server address>:8000`. The first time, it asks you to
+   choose a username and password; do this right away, since until then anyone who can reach the
+   page could claim it. You can change both later under הגדרות.
 
-   ```sh
-   docker compose run --rm -e SCRAPER_DAYS_BACK=365 scraper npm run scrape-once
-   ```
+4. **Connect your banks and credit cards.** In הגדרות › חשבונות וסנכרון, tap
+   "הוספת בנק או כרטיס אשראי", pick the bank or card company and enter the details you use on its
+   website. SmartFin logs in right away and fetches the last year, which can take a few minutes;
+   the list shows how it went. After that, every login syncs nightly at `SCRAPE_TIME` (03:00 by
+   default), and "סנכרון עכשיו" syncs on demand.
 
-4. **Sort the first transactions.** Open תנועות: each transaction waits for a category. With
+5. **Sort the first transactions.** Open תנועות: each transaction waits for a category. With
    "remember for next time" ticked, the next ones from the same place are filed automatically.
    Most important: mark the monthly credit-card bill paid from your bank account as
    **העברות בין חשבונות**, or every card purchase counts twice.
 
-5. **Check the plan.** In תוכנית, see that the fixed bills (rent, insurance, subscriptions) look
+6. **Check the plan.** In תוכנית, see that the fixed bills (rent, insurance, subscriptions) look
    right and set a savings goal. Expected income is the average of the last three months unless
    you set it.
 
 ### Bank and card logins
 
-Each entry in `scraper/config/accounts.json` is `{"company": ..., "credentials": {...}}`:
+Logins are added, updated and removed in the app (הגדרות › חשבונות וסנכרון). Where they go:
+
+- The app sends them to the backend, which passes them straight on to the scraper's small API
+  and keeps nothing. That API listens only on the internal Docker network the backend and scraper
+  share, has no published port, and needs `INGEST_TOKEN`.
+- The scraper saves them in `scraper/config/accounts.json.enc`, encrypted with AES-256-GCM. They
+  are never in the database or the backups, and the app never gets them back: it shows the bank
+  and the end of the ID or username (`•••789`), and updating a login means entering it again.
+- The key is `SCRAPER_ACCOUNTS_KEY` if you set it in `.env`; otherwise the scraper generates one
+  in its own Docker volume (`scraper-keys`), apart from the config folder. The encryption
+  protects the file if it is copied or backed up somewhere. The key is on the same machine, so it
+  does not protect against someone with access to the server itself. If the key is lost, delete
+  `accounts.json.enc` and add the logins again.
+
+What each company asks for:
 
 | Company | Credentials |
 |---|---|
@@ -105,16 +113,9 @@ Each entry in `scraper/config/accounts.json` is `{"company": ..., "credentials":
 
 Banks that ask for a one-time SMS code on every login (One Zero) are not supported.
 
-To keep the file encrypted on disk:
-
-```sh
-docker compose run --rm scraper npm run encrypt-accounts
-```
-
-It writes `accounts.json.enc` (AES-256-GCM) and prints a `SCRAPER_ACCOUNTS_KEY` line for `.env`.
-Restart the scraper, check it starts, then delete `accounts.json`. This protects the file if it is
-copied or backed up somewhere; the key sits on the same machine, so it does not protect against
-someone who has access to the server itself.
+You can still write logins by hand in `scraper/config/accounts.json` (a list of
+`{"company": ..., "credentials": {...}}`, see `accounts.example.json`): the scraper reads it, and
+the first change made in the app folds it into the encrypted file and deletes it.
 
 ## Using it on your phone
 
@@ -143,7 +144,9 @@ gunzip -c backups/smartfin-YYYYMMDD-HHMM.sql.gz | docker compose exec -T db psql
 ### Sync
 
 The scraper logs into each account in turn every night at `SCRAPE_TIME` (Israel time) and
-fetches the last `SCRAPER_DAYS_BACK` days. It sends the results to the backend's
+fetches the last `SCRAPER_DAYS_BACK` days. A login just added in the app is synced right away,
+`SCRAPER_FIRST_DAYS_BACK` (365) days back, and "סנכרון עכשיו" queues every login; syncs run one
+at a time. It sends the results to the backend's
 `/internal/ingest` endpoint, authenticated with `INGEST_TOKEN`. The backend then:
 
 - creates an `accounts` row for each account number it hasn't seen, updates its balance, and
@@ -156,7 +159,8 @@ fetches the last `SCRAPER_DAYS_BACK` days. It sends the results to the backend's
 - writes a `scrape_runs` row for every login, including failures and the error, then checks for
   alerts
 
-Bank logins never leave the scraper container, and the scraper has no route to the database.
+Bank logins are stored only by the scraper, encrypted. The backend passes them through when you
+add one in the app and never stores them, and the scraper has no route to the database.
 
 ```sh
 docker compose run --rm scraper npm run scrape-once              # scrape and store now
@@ -164,8 +168,9 @@ docker compose run --rm scraper npm run scrape-once -- --dry-run # save raw JSON
 docker compose logs scraper                                      # nightly run output
 ```
 
-`.env`, `scraper/config/accounts.json` and `scraper/output/` hold your credentials and real
-transactions. All three are gitignored; keep them that way.
+`.env`, `scraper/config/` (`accounts.json.enc`, and `accounts.json` if you wrote one) and
+`scraper/output/` hold your credentials and real transactions. All are gitignored; keep them that
+way.
 
 ### The cash-flow plan
 
@@ -193,7 +198,10 @@ starts show no balance rather than a wrong one.
 
 ### Security
 
-- One password, stored as a scrypt hash (`APP_PASSWORD_HASH`). Sessions are random tokens in an
+- One login: a username and password, created in the web app on first start and stored in the
+  database as a scrypt hash. Changing the password under הגדרות logs out every other device. If
+  you forget it, reset it on the server with `docker compose exec backend python -m app.password`.
+  Sessions are random tokens in an
   HttpOnly, SameSite=Strict cookie, stored hashed, valid 30 days; logging out ends them. After 5
   wrong passwords, each further try waits longer (up to 15 minutes).
 - Changes need an `X-Requested-With` header, which other sites cannot send.
@@ -293,6 +301,21 @@ curl localhost:8000/api/accounts                   # balances, masked account nu
 curl localhost:8000/api/sync-status                # the latest sync per bank
 ```
 
+### Bank logins and your own login
+
+```sh
+curl localhost:8000/api/connections              # connected banks and cards, and the companies on offer
+curl -X POST localhost:8000/api/connections -H 'content-type: application/json' \
+  -d '{"company": "leumi", "credentials": {"username": "...", "password": "..."}}'
+curl -X PUT localhost:8000/api/connections/<id> ...  # replace a login's credentials
+curl -X DELETE localhost:8000/api/connections/<id>
+curl -X POST localhost:8000/api/connections/sync     # sync every login now
+
+curl localhost:8000/api/auth/status              # {"setup_required": true} until the first sign-up
+curl -X PUT localhost:8000/api/auth/account -H 'content-type: application/json' \
+  -d '{"current_password": "...", "username": "me", "new_password": "..."}'
+```
+
 ## Development
 
 Backend (tests use in-memory SQLite by default; set `DATABASE_URL` to run them on Postgres):
@@ -332,13 +355,19 @@ docker compose run --rm backend python -m app.demo --yes
 
 The Playwright tests log in and click through every screen on a phone-sized browser, check that
 nothing scrolls sideways, and run an accessibility scan (axe). They change data, so run them
-against a fresh database with the sample data, never your real one:
+against a fresh database with the sample data, never your real one. On a database with no login
+yet, the first test creates it through the sign-up screen with `E2E_USERNAME` and `E2E_PASSWORD`:
 
 ```sh
 cd frontend
 npx playwright install chromium
-E2E_BASE_URL=http://localhost:8000 E2E_PASSWORD=<your test password> npm run e2e
+E2E_BASE_URL=http://localhost:8000 E2E_USERNAME=demo E2E_PASSWORD=demo-pass-123 npm run e2e
 ```
+
+The test that connects a bank is skipped unless `E2E_CONNECTIONS=1`: adding a login makes the
+scraper try it against the real site. Run it only with a scraper that has no internet, e.g. with
+a compose override that sets `networks: !override [ingest]` on the `scraper` service. The fake
+login then fails at once, which is what the test expects.
 
 Scraper:
 

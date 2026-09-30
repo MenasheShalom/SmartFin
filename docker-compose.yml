@@ -23,7 +23,6 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
       INGEST_TOKEN: ${INGEST_TOKEN}
-      APP_PASSWORD_HASH: ${APP_PASSWORD_HASH:-}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
       BUDGET_ALERT_LEVELS: ${BUDGET_ALERT_LEVELS:-80,100}
       LOW_BALANCE_THRESHOLD: ${LOW_BALANCE_THRESHOLD:-}
@@ -52,8 +51,9 @@ services:
       retries: 3
 
   # Scrapes every account nightly at SCRAPE_TIME (Israel time) and sends the results to
-  # the backend. It holds the bank logins; it has internet access and can reach the
-  # backend's ingest endpoint, but has no route to the database.
+  # the backend. It holds the bank logins, which are added in the web app and passed to its
+  # small API (port 8080, reachable only by the backend over the ingest network, not published).
+  # It has internet access and can reach the backend, but has no route to the database.
   scraper:
     build: ./scraper
     restart: unless-stopped
@@ -63,9 +63,13 @@ services:
       SCRAPE_TIME: ${SCRAPE_TIME:-03:00}
       SCRAPER_DAYS_BACK: ${SCRAPER_DAYS_BACK:-30}
       SCRAPER_ACCOUNTS_KEY: ${SCRAPER_ACCOUNTS_KEY:-}
+      SCRAPER_FIRST_DAYS_BACK: ${SCRAPER_FIRST_DAYS_BACK:-365}
     volumes:
-      # accounts.json, or accounts.json.enc with SCRAPER_ACCOUNTS_KEY
-      - ./scraper/config:/app/config:ro
+      # accounts.json.enc: the logins added in the web app, encrypted
+      - ./scraper/config:/app/config
+      # The generated encryption key, when SCRAPER_ACCOUNTS_KEY is not set. Kept apart from the
+      # config folder and the backups, so a copy of those alone can't be decrypted.
+      - scraper-keys:/app/keys
       - ./scraper/output:/app/output
     depends_on:
       backend:
@@ -90,6 +94,9 @@ services:
       db:
         condition: service_healthy
     networks: [internal]
+
+volumes:
+  scraper-keys: {}
 
 networks:
   # No outbound internet: only backend and db live here.

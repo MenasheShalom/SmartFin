@@ -25,5 +25,6 @@ frontend/dist/
 frontend/test-results/
 frontend/playwright-report/
 backups/
-scraper/config/accounts.json.enc
+scraper/config/accounts.json.enc*
+scraper/keys/
 frontend/*.tsbuildinfo

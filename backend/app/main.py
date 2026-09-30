@@ -19,7 +19,17 @@ from app.ingest import IngestSummary, ScrapeResult, ingest
 from app.months import get_today
 from app.notify import channels, send_pending
 from app.auth import require_user
-from app.routers import accounts, alerts, auth, budgets, cashflow, categories, rules, transactions
+from app.routers import (
+    accounts,
+    alerts,
+    auth,
+    budgets,
+    cashflow,
+    categories,
+    connections,
+    rules,
+    transactions,
+)
 from app.spa import SPAStaticFiles
 from app.watchdog import run_forever
 
@@ -46,6 +56,7 @@ for router in (
     alerts.router,
     accounts.router,
     cashflow.router,
+    connections.router,
 ):
     app.include_router(router, dependencies=[Depends(require_user)])
 

@@ -1,11 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page } from "@playwright/test";
 
+export const USERNAME = process.env.E2E_USERNAME ?? "demo";
 export const PASSWORD = process.env.E2E_PASSWORD ?? "demo-pass-123";
 
 export async function login(page: Page) {
   await page.goto("/");
-  await page.getByLabel("סיסמה").fill(PASSWORD);
+  await page.getByLabel("שם משתמש").fill(USERNAME);
+  await page.getByLabel("סיסמה", { exact: true }).fill(PASSWORD);
   await page.getByRole("button", { name: "כניסה" }).click();
   await expect(page.getByText("צפי לסוף החודש")).toBeVisible();
 }

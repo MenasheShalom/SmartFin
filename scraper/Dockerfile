@@ -8,6 +8,7 @@ RUN apt-get update \
 ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium \
     SCRAPER_OUTPUT_DIR=/app/output \
     SCRAPER_ACCOUNTS_FILE=/app/config/accounts.json \
+    SCRAPER_KEY_FILE=/app/keys/accounts.key \
     TZ=Asia/Jerusalem
 
 WORKDIR /app

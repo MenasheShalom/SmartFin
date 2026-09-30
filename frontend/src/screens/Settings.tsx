@@ -1,15 +1,17 @@
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { errorMessage } from "../api/client";
+import { ApiError, errorMessage } from "../api/client";
 import {
   useAccounts,
   useCategories,
   useCategoryMutations,
   useLogout,
+  useMe,
   useRuleMutations,
   useRules,
   useSyncStatus,
+  useUpdateAccount,
 } from "../api/queries";
 import type { Category, CategoryKind, Rule } from "../api/types";
 import { CategoryPicker, selectableCategories } from "../components/CategoryPicker";
@@ -19,6 +21,8 @@ import { Sheet } from "../components/Sheet";
 import { EmptyState, ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
 import { formatSyncTime } from "../lib/format";
+import { ConnectionsSection } from "./Connections";
+import { MIN_PASSWORD } from "./Login";
 
 function SubScreen({ title, subtitle, action, children }: { title: string; subtitle?: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -41,10 +45,12 @@ function SubScreen({ title, subtitle, action, children }: { title: string; subti
 
 export function SettingsScreen() {
   const logout = useLogout();
+  const me = useMe();
+  const [editingAccount, setEditingAccount] = useState(false);
   const items = [
     { to: "/settings/categories", title: "קטגוריות", sub: "שמות, קבועות ומשתנות" },
     { to: "/settings/rules", title: "כללי סיווג", sub: "איך תנועות מסווגות אוטומטית" },
-    { to: "/settings/accounts", title: "חשבונות וסנכרון", sub: "יתרות ומצב הסנכרון הלילי" },
+    { to: "/settings/accounts", title: "חשבונות וסנכרון", sub: "חיבור בנקים וכרטיסי אשראי, יתרות וסנכרון" },
     { to: "/alerts", title: "התראות", sub: "חריגות, יתרה נמוכה וחיובים גדולים" },
   ];
   return (
@@ -67,10 +73,106 @@ export function SettingsScreen() {
           ))}
         </div>
       </nav>
+      <section className="card card--flush" aria-label="משתמש">
+        <button type="button" className="list-row" onClick={() => setEditingAccount(true)}>
+          <span className="list-row-main">
+            <span className="list-row-title">שם משתמש וסיסמה</span>
+            <span className="list-row-sub">{me.data?.username ? `מחובר כ־${me.data.username}` : "שינוי פרטי הכניסה"}</span>
+          </span>
+          <ChevronEnd size={18} />
+        </button>
+      </section>
       <button type="button" className="button button--danger" onClick={() => logout.mutate()} disabled={logout.isPending}>
         התנתקות
       </button>
+      {editingAccount && <AccountSheet username={me.data?.username ?? ""} onClose={() => setEditingAccount(false)} />}
     </main>
+  );
+}
+
+function AccountSheet({ username: currentUsername, onClose }: { username: string; onClose: () => void }) {
+  const [username, setUsername] = useState(currentUsername);
+  const [current, setCurrent] = useState("");
+  const [password, setPassword] = useState("");
+  const [again, setAgain] = useState("");
+  const [tried, setTried] = useState(false);
+  const update = useUpdateAccount();
+  const toast = useToast();
+
+  let error: string | null = null;
+  if (tried && password && password.length < MIN_PASSWORD) error = `הסיסמה החדשה צריכה להיות באורך ${MIN_PASSWORD} תווים לפחות.`;
+  else if (tried && password !== again) error = "הסיסמאות החדשות לא תואמות.";
+  else if (update.error instanceof ApiError && update.error.status === 400) error = "הסיסמה הנוכחית שגויה.";
+  else if (update.error) error = errorMessage(update.error);
+
+  const submit = () => {
+    setTried(true);
+    if (!username.trim() || !current || (password && password.length < MIN_PASSWORD) || password !== again) return;
+    update.mutate(
+      { current_password: current, username: username.trim(), ...(password ? { new_password: password } : {}) },
+      {
+        onSuccess: () => {
+          toast(password ? "הפרטים עודכנו. מכשירים אחרים נותקו." : "שם המשתמש עודכן.");
+          onClose();
+        },
+      },
+    );
+  };
+
+  return (
+    <Sheet title="שם משתמש וסיסמה" onClose={onClose}>
+      <form
+        style={{ display: "flex", flexDirection: "column", gap: 14 }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          submit();
+        }}
+      >
+        <label className="field">
+          שם משתמש
+          <input
+            className="input"
+            autoComplete="username"
+            autoCapitalize="none"
+            maxLength={64}
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            required
+          />
+        </label>
+        <label className="field">
+          סיסמה חדשה
+          <span className="field-hint">השאירו ריק כדי לא לשנות</span>
+          <input className="input" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+        </label>
+        {password && (
+          <label className="field">
+            הסיסמה החדשה שוב
+            <input className="input" type="password" autoComplete="new-password" value={again} onChange={(e) => setAgain(e.target.value)} />
+          </label>
+        )}
+        <label className="field">
+          הסיסמה הנוכחית
+          <span className="field-hint">לאישור השינוי</span>
+          <input
+            className="input"
+            type="password"
+            autoComplete="current-password"
+            value={current}
+            onChange={(e) => setCurrent(e.target.value)}
+            required
+          />
+        </label>
+        {error && (
+          <p className="error-text" role="alert">
+            {error}
+          </p>
+        )}
+        <button type="submit" className="button" disabled={update.isPending || !current || !username.trim()}>
+          שמירה
+        </button>
+      </form>
+    </Sheet>
   );
 }
 
@@ -366,14 +468,15 @@ export function AccountsScreen() {
   const sync = useSyncStatus();
 
   return (
-    <SubScreen title="חשבונות וסנכרון" subtitle="הסנכרון רץ כל לילה. פרטי הכניסה לבנקים נשמרים רק בשרת הביתי.">
+    <SubScreen title="חשבונות וסנכרון" subtitle="הסנכרון רץ כל לילה. פרטי הכניסה לבנקים נשמרים מוצפנים רק בשרת הביתי.">
+      <ConnectionsSection />
       {(accounts.isPending || sync.isPending) && <Loading rows={2} />}
       {accounts.isError && <ErrorState error={accounts.error} onRetry={() => accounts.refetch()} />}
       {sync.data && (
         <section aria-label="מצב הסנכרון">
           <h2 className="group-label">סנכרון אחרון</h2>
           {sync.data.length === 0 ? (
-            <EmptyState title="עוד לא היה סנכרון" body="הסנכרון הראשון ירוץ הלילה. אפשר גם להריץ אותו עכשיו מהשרת: docker compose run --rm scraper npm run scrape-once" />
+            <EmptyState title="עוד לא היה סנכרון" body="חברו בנק או כרטיס אשראי למעלה, והתנועות יורדו מיד." />
           ) : (
             <div className="card card--flush" style={{ marginTop: 6 }}>
               <div className="list">

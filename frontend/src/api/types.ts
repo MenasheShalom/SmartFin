@@ -106,6 +106,32 @@ export interface SyncStatus {
   last_success_at: string | null;
 }
 
+export type ConnectionKind = "bank" | "card";
+
+export interface Company {
+  id: string;
+  label: string;
+  kind: ConnectionKind;
+  login_fields: string[];
+}
+
+/** A bank or card login kept by the scraper; its credentials never come back to the app */
+export interface Connection {
+  id: string;
+  company: string;
+  label: string;
+  kind: ConnectionKind;
+  hint: string | null;
+  added_at: string | null;
+  sync: "running" | "queued" | null;
+  last_sync: { ok: boolean; error_type: string | null; finished_at: string | null } | null;
+}
+
+export interface Connections {
+  connections: Connection[];
+  companies: Company[];
+}
+
 export interface Alert {
   id: number;
   type: "overspend" | "low_balance" | "unusual_transaction" | "scrape_failure";

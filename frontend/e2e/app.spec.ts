@@ -1,14 +1,31 @@
 import { expect, test } from "@playwright/test";
 
-import { expectAccessible, expectNoHorizontalScroll, login } from "./helpers";
+import { expectAccessible, expectNoHorizontalScroll, login, PASSWORD, USERNAME } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
+test("on first start the login is created in the app", async ({ page, request }) => {
+  const status = await (await request.get("/api/auth/status")).json();
+  test.skip(!status.setup_required, "already set up");
+  await page.goto("/");
+  await expectAccessible(page);
+  await page.getByLabel("שם משתמש").fill(USERNAME);
+  // the label also carries the "8 characters" hint
+  await page.getByLabel(/^סיסמה/).fill(PASSWORD);
+  await page.getByLabel("הסיסמה שוב").fill("something-else");
+  await page.getByRole("button", { name: "יצירת משתמש" }).click();
+  await expect(page.getByRole("alert")).toHaveText("הסיסמאות לא תואמות.");
+  await page.getByLabel("הסיסמה שוב").fill(PASSWORD);
+  await page.getByRole("button", { name: "יצירת משתמש" }).click();
+  await expect(page.getByText("צפי לסוף החודש")).toBeVisible();
+});
+
 test("a wrong password is refused", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("סיסמה").fill("not-the-password");
+  await page.getByLabel("שם משתמש").fill(USERNAME);
+  await page.getByLabel("סיסמה", { exact: true }).fill("not-the-password");
   await page.getByRole("button", { name: "כניסה" }).click();
-  await expect(page.getByRole("alert")).toHaveText("הסיסמה שגויה.");
+  await expect(page.getByRole("alert")).toHaveText("שם המשתמש או הסיסמה שגויים.");
 });
 
 test("every screen renders on a phone, fits the width and passes axe", async ({ page }) => {
@@ -193,7 +210,58 @@ test("logging out returns to the login screen", async ({ page }) => {
   await login(page);
   await page.goto("/settings");
   await page.getByRole("button", { name: "התנתקות" }).click();
-  await expect(page.getByLabel("סיסמה")).toBeVisible();
+  await expect(page.getByLabel("שם משתמש")).toBeVisible();
   await page.goto("/plan");
-  await expect(page.getByLabel("סיסמה")).toBeVisible();
+  await expect(page.getByLabel("שם משתמש")).toBeVisible();
+});
+
+test("the password can be changed in settings", async ({ page }) => {
+  await login(page);
+  await page.goto("/settings");
+  await page.getByRole("button", { name: /שם משתמש וסיסמה/ }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("סיסמה חדשה").fill("changed-pass-456");
+  await sheet.getByLabel("הסיסמה החדשה שוב").fill("changed-pass-456");
+  await sheet.getByLabel("הסיסמה הנוכחית").fill("wrong-current");
+  await sheet.getByRole("button", { name: "שמירה" }).click();
+  await expect(sheet.getByRole("alert")).toHaveText("הסיסמה הנוכחית שגויה.");
+  await sheet.getByLabel("הסיסמה הנוכחית").fill(PASSWORD);
+  await sheet.getByRole("button", { name: "שמירה" }).click();
+  await expect(sheet).toBeHidden();
+
+  // and back, so the other tests can still log in
+  await page.getByRole("button", { name: /שם משתמש וסיסמה/ }).click();
+  await sheet.getByLabel("סיסמה חדשה").fill(PASSWORD);
+  await sheet.getByLabel("הסיסמה החדשה שוב").fill(PASSWORD);
+  await sheet.getByLabel("הסיסמה הנוכחית").fill("changed-pass-456");
+  await sheet.getByRole("button", { name: "שמירה" }).click();
+  await expect(sheet).toBeHidden();
+});
+
+// Adding a login makes the scraper try it against the real site, so this runs only against a
+// stack whose scraper has no internet (see README, "End-to-end tests"): the login then fails.
+test("a bank can be connected, fails to log in, and is disconnected", async ({ page }) => {
+  test.skip(process.env.E2E_CONNECTIONS !== "1", "set E2E_CONNECTIONS=1 with an offline scraper");
+  test.setTimeout(180_000);
+  await login(page);
+  await page.goto("/settings/accounts");
+  await page.getByRole("button", { name: "הוספת בנק או כרטיס אשראי" }).click();
+  const sheet = page.getByRole("dialog");
+  await sheet.getByLabel("בנק או חברת אשראי").selectOption({ label: "ישראכרט" });
+  await sheet.getByLabel("תעודת זהות").fill("123456789");
+  await sheet.getByLabel("6 הספרות האחרונות של הכרטיס").fill("123456");
+  await sheet.getByLabel("סיסמה").fill("not-a-real-password");
+  await expectAccessible(page);
+  await sheet.getByRole("button", { name: "חיבור" }).click();
+  await expect(sheet).toBeHidden();
+
+  const row = page.getByRole("button", { name: /ישראכרט/ });
+  await expect(row).toContainText("•••789");
+  await expect(row).toContainText("ההתחברות נכשלה", { timeout: 150_000 });
+  await expectAccessible(page);
+
+  await row.click();
+  page.once("dialog", (d) => d.accept());
+  await sheet.getByRole("button", { name: "ניתוק" }).click();
+  await expect(row).toBeHidden();
 });
