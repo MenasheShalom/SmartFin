@@ -186,12 +186,15 @@ For each month:
 - **The end-of-month forecast** projects day-to-day spending from the pace so far, blended with
   the plan early in the month (the pace counts more as the month goes on).
 
-Income and transfers never count as spending. Uncategorized transactions are left out of every
-number, and the app says how much is waiting to be sorted.
+Income and transfers never count as spending. Uncategorized transactions are left out of the
+plan, and the app says how much is waiting to be sorted.
 
 ### History
 
-Income and expenses per month come from categorized transactions. The end-of-month balance is the
+Income and expenses per month come from categorized transactions, and from ones not sorted yet by
+their direction: money out of any account is an expense, money into a card is a refund (it
+reduces expenses), and money into a bank account is income. A card bill paid from the bank counts
+twice until it is filed as a transfer. The end-of-month balance is the
 total of your bank accounts: the balance snapshot from that month where there is one, otherwise
 worked back from today's balance through the transactions since. Months before an account's data
 starts show no balance rather than a wrong one.

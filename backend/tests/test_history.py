@@ -32,9 +32,23 @@ def test_history_back_calculates_balances(client, world):
     assert client.get("/api/history").json() == [
         {"month": "2026-08", "income": "5000.00", "expenses": "1000.00", "net": "4000.00",
          "balance": "9000.00", "partial": False},
-        {"month": "2026-09", "income": "3000.00", "expenses": "2500.00", "net": "500.00",
+        {"month": "2026-09", "income": "3000.00", "expenses": "3200.00", "net": "-200.00",
          "balance": "10000.00", "partial": True},
     ]
+
+
+def test_uncategorized_counts_by_sign_and_account(client, session, world):
+    card = make_account(session, "isracard")
+    card.account_type = AccountType.CREDIT_CARD
+    make_txn(session, card, "refund", 200, day=date(2026, 9, 7))
+    make_txn(session, world["bank"], "salary?", 1000, day=date(2026, 9, 8))
+    make_txn(session, world["bank"], "atm", -300, day=date(2026, 9, 9))
+    transfers = make_category(session, "העברות", kind=CategoryKind.TRANSFER)
+    make_txn(session, world["bank"], "card bill", -4000, day=date(2026, 9, 10), category=transfers)
+    session.commit()
+    september = client.get("/api/history").json()[1]
+    # 3000 + 1000 in; 2000 + 500 + 700 + 300 - 200 out; the transfer counts as neither
+    assert (september["income"], september["expenses"]) == ("4000.00", "3300.00")
 
 
 def test_snapshot_wins_over_back_calculation(client, session, world):
