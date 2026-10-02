@@ -16,7 +16,8 @@ from app.months import format_month, next_month
 class MonthHistory(BaseModel):
     month: str
     income: Decimal
-    # Net spending in expense categories (fixed and day-to-day); refunds reduce it
+    # Net spending in expense categories (fixed and day-to-day), plus uncategorized money out;
+    # refunds reduce it
     expenses: Decimal
     net: Decimal
     # Total of the bank accounts at the month's end (today, for the current month).
@@ -77,6 +78,21 @@ def monthly_history(session: Session, today: date) -> list[MonthHistory]:
             income[day.replace(day=1)] += money(total)
         elif kind == CategoryKind.EXPENSE:
             expenses[day.replace(day=1)] -= money(total)
+
+    # Not sorted yet: the totals shouldn't wait for that. Money out of any account is spending;
+    # money into a card is a refund, which reduces it; money into a bank account is income.
+    # (A card bill paid from the bank counts twice until it is filed as a transfer.)
+    uncategorized = session.execute(
+        select(Transaction.date, Transaction.amount, Account.account_type)
+        .join(Account, Account.id == Transaction.account_id)
+        .where(Transaction.date <= today, Transaction.category_id.is_(None))
+    )
+    for day, amount, account_type in uncategorized:
+        month = day.replace(day=1)
+        if amount > 0 and account_type == AccountType.BANK:
+            income[month] += money(amount)
+        else:
+            expenses[month] -= money(amount)
 
     months, month = [], first.replace(day=1)
     current = today.replace(day=1)
