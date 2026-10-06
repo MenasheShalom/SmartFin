@@ -140,7 +140,9 @@ class SmartFinOAuthProvider:
             return _form(request_id, "שם המשתמש או הסיסמה שגויים.", 401)
         self.throttle.succeeded(key)
 
-        del self.pending[request_id]
+        # A second submit of the same form, e.g. a double tap, finds it already used
+        if self.pending.pop(request_id, None) is None:
+            return _expired()
         now = time.time()
         self.codes = {k: v for k, v in self.codes.items() if v.expires_at > now}
         code = secrets.token_urlsafe(32)
