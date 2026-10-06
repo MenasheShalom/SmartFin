@@ -30,7 +30,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 
 | Path | What it is |
 |---|---|
-| `backend/` | FastAPI API, SQLAlchemy models, Alembic migrations; serves the web app |
+| `backend/` | FastAPI API, SQLAlchemy models, Alembic migrations; serves the web app. Also the optional MCP server for Claude (`app/mcp_server`) |
 | `frontend/` | The web app: React, TypeScript, Vite |
 | `scraper/` | Node.js service using [israeli-bank-scrapers](https://github.com/eshaham/israeli-bank-scrapers) |
 | `ops/` | Backup script |
@@ -45,6 +45,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 - [x] **Phase 5: The app.** Login, cash-flow plan, weekly view, history, categorizing, settings
 - [x] **Phase 6: Hardening.** Backups, encrypted bank logins, stalled-sync alerts, non-root image
 - [x] **Phase 7: Set up from the app.** Username and password, and bank and card logins, managed in the web app
+- [x] **Phase 8: Ask Claude.** A read-only MCP server, so Claude (including the phone app) can answer questions about your money
 
 ## Setting it up
 
@@ -129,6 +130,47 @@ router: install it on the server and the phone, then on the server run
 `COOKIE_SECURE=true` in `.env` so the login cookie is only ever sent over HTTPS. To make SmartFin
 reachable only through Tailscale, also set `BIND_ADDRESS=127.0.0.1`.
 
+## Ask Claude about your money
+
+The optional `mcp` service is an [MCP](https://modelcontextprotocol.io) server, so you can ask
+Claude, for example in the Claude phone app, "how much is left for this week?", "what did I spend
+on food in September?" or "find the Wolt charges this month". It can only read: there is nothing
+in it that changes data, and on Postgres its queries run in read-only transactions.
+
+Claude connects from Anthropic's servers, not from your phone, so the MCP server needs a public
+HTTPS address. Only this service is published; the web app stays private. Connecting asks for
+your SmartFin username and password, and only Claude's own callback addresses can receive the
+login, so another app can't connect with it.
+
+1. **Publish it.** With [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) on the server
+   (enable Funnel for the machine when it asks):
+
+   ```sh
+   tailscale funnel --bg --https=8443 8001
+   ```
+
+   That gives `https://<machine>.<tailnet>.ts.net:8443`. A
+   [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
+   to `http://localhost:8001` works too.
+
+2. **Turn it on.** In `.env`, set `COMPOSE_PROFILES=mcp` and `MCP_PUBLIC_URL` to that address
+   (no path), then `docker compose up -d`.
+
+3. **Connect Claude.** On claude.ai: Settings › Connectors › Add custom connector, with the URL
+   `<MCP_PUBLIC_URL>/mcp`. Leave the advanced OAuth fields empty. Claude opens the SmartFin login;
+   sign in. The connector then shows up in the phone app too.
+
+Claude stays connected for 90 days of not using it; using it extends that. Changing your
+username or password under הגדרות (or resetting it on the server) disconnects Claude, as it logs
+out other browsers. To stop it altogether, remove `mcp` from `COMPOSE_PROFILES` and run
+`docker compose up -d --remove-orphans`, and turn off the funnel with
+`tailscale funnel --https=8443 off`.
+
+What Claude can see: the cash flow for any month, history, budgets, spending by category,
+transactions (search by text, month, dates, category or account), categories, and accounts with
+balances and sync status. Account numbers are shown as their last four digits. Your answers
+go through Anthropic like any other Claude conversation.
+
 ## Backups
 
 The `backup` service writes a gzipped database dump to `./backups` when the stack starts and every
@@ -211,6 +253,10 @@ starts show no balance rather than a wrong one.
 - The web app is served with a strict Content-Security-Policy and no third-party requests: the
   font is bundled.
 - The backend runs as a non-root user; the database has no route to the internet.
+- The MCP server (off unless turned on) is an OAuth server for its one user: the login form is
+  your SmartFin password, with the same lockout after wrong tries; only Claude's callback URLs
+  (`MCP_REDIRECT_URIS`) can register; tokens are stored hashed, access tokens last an hour, and
+  refreshing replaces both tokens.
 
 ## Alerts
 

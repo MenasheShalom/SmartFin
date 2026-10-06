@@ -27,6 +27,15 @@ class Settings(BaseSettings):
     # Send the session cookie only over HTTPS (turn on behind Tailscale serve or another TLS proxy)
     cookie_secure: bool = False
 
+    # --- MCP server (python -m app.mcp_server): Claude reads the data, behind the same login ---
+    # The public HTTPS address it is reached at, e.g. https://smartfin.example.ts.net. Claude
+    # connects to <this>/mcp; the server refuses to start while it is unset.
+    mcp_public_url: str | None = None
+    # Where the login may send its result: Claude's OAuth callbacks. Other apps can't connect.
+    mcp_redirect_uris: str = (
+        "https://claude.ai/api/mcp/auth_callback,https://claude.com/api/mcp/auth_callback"
+    )
+
     # --- Alerts (each check is off while its threshold is unset) ---
     # Percent-of-budget levels that trigger an alert, e.g. "80,100"
     budget_alert_levels: str = "80,100"
@@ -46,6 +55,10 @@ class Settings(BaseSettings):
     smtp_starttls: bool = True
     alert_email_from: str | None = None
     alert_email_to: str | None = None
+
+    @property
+    def mcp_redirect_uri_list(self) -> list[str]:
+        return [uri.strip() for uri in self.mcp_redirect_uris.split(",") if uri.strip()]
 
     @property
     def budget_levels(self) -> list[int]:

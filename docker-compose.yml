@@ -50,6 +50,34 @@ services:
       timeout: 5s
       retries: 3
 
+  # Optional (docker compose --profile mcp up -d): lets Claude read your data, e.g. from the
+  # Claude phone app. Read-only, behind your SmartFin username and password. Claude's servers
+  # must reach it over HTTPS, so publish it with Tailscale Funnel or a Cloudflare Tunnel (see
+  # the README); only this service is exposed, not the web app.
+  mcp:
+    profiles: [mcp]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    command: ["python", "-m", "app.mcp_server"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      MCP_PUBLIC_URL: ${MCP_PUBLIC_URL:-}
+      SYNC_WATCHDOG: "false"
+    depends_on:
+      # The backend applies the database migrations
+      backend:
+        condition: service_healthy
+    ports:
+      - "${MCP_BIND_ADDRESS:-127.0.0.1}:${MCP_PORT:-8001}:8001"
+    networks: [internal, mcp]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
   # Scrapes every account nightly at SCRAPE_TIME (Israel time) and sends the results to
   # the backend. It holds the bank logins, which are added in the web app and passed to its
   # small API (port 8080, reachable only by the backend over the ingest network, not published).
@@ -107,3 +135,5 @@ networks:
     internal: true
   web: {}
   scraper: {}
+  # Lets the MCP server's port be published (an internal network can't be)
+  mcp: {}

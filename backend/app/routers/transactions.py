@@ -61,21 +61,20 @@ def learn_rule(session: Session, description: str, category_id: int) -> Categori
     return rule
 
 
-@router.get("")
-def list_transactions(
-    session: SessionDep,
-    month: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
+def query_transactions(
+    session: Session,
+    *,
+    month: str | None = None,
     account_id: int | None = None,
-    # Includes its subcategories
     category_id: int | None = None,
     uncategorized: bool = False,
     date_from: date | None = None,
     date_to: date | None = None,
-    # Matches the description or memo
-    q: Annotated[str | None, Query(max_length=100)] = None,
-    limit: Annotated[int, Query(ge=1, le=500)] = 100,
-    offset: Annotated[int, Query(ge=0)] = 0,
-) -> list[TransactionOut]:
+    q: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[Transaction]:
+    """Newest first. A category includes its subcategories; q matches the description or memo."""
     query = select(Transaction)
     if month is not None:
         start = parse_month(month)
@@ -103,7 +102,36 @@ def list_transactions(
             )
         )
     query = query.order_by(Transaction.date.desc(), Transaction.id.desc())
-    return session.scalars(query.limit(limit).offset(offset)).all()
+    return list(session.scalars(query.limit(limit).offset(offset)))
+
+
+@router.get("")
+def list_transactions(
+    session: SessionDep,
+    month: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
+    account_id: int | None = None,
+    # Includes its subcategories
+    category_id: int | None = None,
+    uncategorized: bool = False,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    # Matches the description or memo
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> list[TransactionOut]:
+    return query_transactions(
+        session,
+        month=month,
+        account_id=account_id,
+        category_id=category_id,
+        uncategorized=uncategorized,
+        date_from=date_from,
+        date_to=date_to,
+        q=q,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.patch("/{transaction_id}")
