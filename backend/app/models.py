@@ -224,3 +224,29 @@ class UserSession(Base):
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class McpClient(Base):
+    """An app registered to connect to the MCP server (Claude registers itself)."""
+
+    __tablename__ = "mcp_clients"
+
+    client_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    # The registration as the MCP SDK stores it (OAuthClientInformationFull, JSON)
+    info: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class McpToken(Base):
+    """An access or refresh token given to an MCP client. Only a hash is stored."""
+
+    __tablename__ = "mcp_tokens"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True)
+    kind: Mapped[str] = mapped_column(String(10))  # "access" | "refresh"
+    # Every token from one login shares this, so revoking or refreshing one ends them all
+    grant_id: Mapped[str] = mapped_column(String(64), index=True)
+    client_id: Mapped[str] = mapped_column(String(64))
+    scopes: Mapped[str] = mapped_column(String(255))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))

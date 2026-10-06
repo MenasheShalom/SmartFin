@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_session
-from app.models import AppUser, UserSession
+from app.models import AppUser, McpToken, UserSession
 
 COOKIE_NAME = "smartfin_session"
 SESSION_DAYS = 30
@@ -120,11 +120,13 @@ def set_credentials(session: Session, username: str, password: str | None) -> Ap
 
 
 def end_sessions(session: Session, keep_token: str | None = None) -> None:
-    """Log out every browser, except the one holding keep_token. Commits."""
+    """Log out every browser, except the one holding keep_token, and disconnect Claude
+    (the MCP server). Commits."""
     query = delete(UserSession)
     if keep_token:
         query = query.where(UserSession.token_hash != token_hash(keep_token))
     session.execute(query)
+    session.execute(delete(McpToken))
     session.commit()
 
 
