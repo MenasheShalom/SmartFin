@@ -193,7 +193,7 @@ class SmartFinOAuthProvider:
             token=refresh_token,
             client_id=row.client_id,
             scopes=row.scopes.split(),
-            expires_at=int(row.expires_at.timestamp()),
+            expires_at=_timestamp(row.expires_at),
             resource=self.resource,
         )
 
@@ -214,7 +214,7 @@ class SmartFinOAuthProvider:
             token=token,
             client_id=row.client_id,
             scopes=row.scopes.split(),
-            expires_at=int(row.expires_at.timestamp()),
+            expires_at=_timestamp(row.expires_at),
             resource=self.resource,
         )
 
@@ -299,6 +299,14 @@ button { width: 100%; margin-top: 20px; padding: 12px; font: inherit; font-weigh
   color: #fff; background: var(--accent); border: 0; border-radius: 8px; cursor: pointer; }
 .error { color: var(--error); margin: 12px 0 0; }
 """
+
+
+def _timestamp(moment: datetime) -> int:
+    """Seconds since the epoch. Times are stored in UTC; SQLite returns them without the zone,
+    and a naive datetime's timestamp() would read them as the machine's local time."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=UTC)
+    return int(moment.timestamp())
 
 
 def _page(body: str, status: int = 200) -> HTMLResponse:
