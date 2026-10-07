@@ -2,7 +2,7 @@
 // API the web app uses to add logins and sync on demand.
 import { createApi } from './api.js';
 import { loadSettings } from './config.js';
-import { msUntilNext } from './schedule.js';
+import { isDue, lastOccurrence, msUntilNext } from './schedule.js';
 import { AccountStore } from './store.js';
 import { SyncQueue } from './sync.js';
 
@@ -22,18 +22,26 @@ createApi({ store, queue, token: settings.ingestToken }).listen(settings.apiPort
   console.log(`Listening for the backend on port ${settings.apiPort}`);
 });
 
-function scheduleNext() {
-  const delay = msUntilNext(settings.scrapeTime);
-  console.log(`Next scrape at ${new Date(Date.now() + delay).toString()}`);
-  setTimeout(async () => {
-    try {
-      await queue.enqueueAll();
-      await queue.idle;
-    } catch (err) {
-      console.error(`Nightly scrape failed: ${err.message}`);
-    }
-    scheduleNext();
-  }, delay);
-}
+const announceNext = () =>
+  console.log(`Next scrape at ${new Date(Date.now() + msUntilNext(settings.scrapeTime)).toString()}`);
 
-scheduleNext();
+// Checked every minute against the clock, so a run missed while the machine slept happens on waking
+let lastRun = new Date();
+let running = false;
+setInterval(async () => {
+  if (running || !isDue(settings.scrapeTime, lastRun)) return;
+  running = true;
+  const late = Date.now() - lastOccurrence(settings.scrapeTime).getTime() > 5 * 60_000;
+  console.log(late ? 'Running the nightly scrape late (the machine was asleep)' : 'Nightly scrape');
+  try {
+    await queue.enqueueAll();
+    await queue.idle;
+  } catch (err) {
+    console.error(`Nightly scrape failed: ${err.message}`);
+  }
+  lastRun = new Date();
+  running = false;
+  announceNext();
+}, 60_000);
+
+announceNext();

@@ -173,8 +173,8 @@ go through Anthropic like any other Claude conversation.
 
 ## Backups
 
-The `backup` service writes a gzipped database dump to `./backups` when the stack starts and every
-24 hours after, keeping `BACKUP_KEEP_DAYS` (14) days. Copy that folder somewhere else from time
+The `backup` service writes a gzipped database dump to `./backups` when the stack starts and then
+once a day (if the machine was asleep, as soon as it wakes), keeping `BACKUP_KEEP_DAYS` (14) days. Copy that folder somewhere else from time
 to time: it holds all your financial history. To restore one:
 
 ```sh
@@ -188,7 +188,8 @@ gunzip -c backups/smartfin-YYYYMMDD-HHMM.sql.gz | docker compose exec -T db psql
 The scraper logs into each account in turn every night at `SCRAPE_TIME` (Israel time) and
 fetches the last `SCRAPER_DAYS_BACK` days. A login just added in the app is synced right away,
 `SCRAPER_FIRST_DAYS_BACK` (365) days back, and "סנכרון עכשיו" queues every login; syncs run one
-at a time. It sends the results to the backend's
+at a time. If the machine was asleep at `SCRAPE_TIME` (a laptop, or Docker Desktop on Windows or
+macOS), the nightly run happens as soon as it wakes. It sends the results to the backend's
 `/internal/ingest` endpoint, authenticated with `INGEST_TOKEN`. The backend then:
 
 - creates an `accounts` row for each account number it hasn't seen, updates its balance, and
