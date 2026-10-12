@@ -146,10 +146,11 @@ login, so another app can't connect with it.
    (enable Funnel for the machine when it asks):
 
    ```sh
-   tailscale funnel --bg --https=8443 8001
+   tailscale funnel --bg 8001     # or your MCP_PORT
    ```
 
-   That gives `https://<machine>.<tailnet>.ts.net:8443`. A
+   That gives `https://<machine>.<tailnet>.ts.net`, on the standard HTTPS port. Use that rather
+   than another Funnel port such as 8443: Claude's connector didn't reach a server on 8443. A
    [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
    to `http://localhost:8001` works too.
 
@@ -164,7 +165,7 @@ Claude stays connected for 90 days of not using it; using it extends that. Chang
 username or password under הגדרות (or resetting it on the server) disconnects Claude, as it logs
 out other browsers. To stop it altogether, remove `mcp` from `COMPOSE_PROFILES` and run
 `docker compose up -d --remove-orphans`, and turn off the funnel with
-`tailscale funnel --https=8443 off`.
+`tailscale funnel --https=443 off`.
 
 What Claude can see: the cash flow for any month, history, budgets, spending by category,
 transactions (search by text, month, dates, category or account), categories, and accounts with
