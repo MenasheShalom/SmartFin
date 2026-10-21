@@ -1,7 +1,7 @@
 """OAuth for the MCP server, so only the SmartFin login can connect Claude.
 
 Claude registers itself (dynamic client registration), then sends you to /login, where you sign
-in with your SmartFin username and password. Only Claude's own callback addresses
+in with your SmartFin phone number and password. Only Claude's own callback addresses
 (MCP_REDIRECT_URIS) can receive the result, so another app can't use a login to get at the data.
 
 Registrations and tokens live in the database (only hashes of the tokens); a pending login and
@@ -38,7 +38,7 @@ SCOPE = "smartfin:read"
 ACCESS_SECONDS = 60 * 60
 REFRESH_DAYS = 90
 CODE_SECONDS = 5 * 60
-# Time to type the username and password
+# Time to type the phone number and password
 LOGIN_SECONDS = 10 * 60
 MAX_PENDING_LOGINS = 100
 # Anyone can register; registrations that never logged in are dropped after this
@@ -134,10 +134,10 @@ class SmartFinOAuthProvider:
         wait = self.throttle.wait_seconds(key)
         if wait:
             return _form(request_id, f"יותר מדי ניסיונות. נסו שוב בעוד {wait} שניות.", 429)
-        username, password = str(form.get("username", ""))[:64], str(form.get("password", ""))[:256]
-        if not await anyio.to_thread.run_sync(self._check_login, username, password):
+        phone, password = str(form.get("phone", ""))[:64], str(form.get("password", ""))[:256]
+        if not await anyio.to_thread.run_sync(self._check_login, phone, password):
             self.throttle.failed(key)
-            return _form(request_id, "שם המשתמש או הסיסמה שגויים.", 401)
+            return _form(request_id, "מספר הטלפון או הסיסמה שגויים.", 401)
         self.throttle.succeeded(key)
 
         # A second submit of the same form, e.g. a double tap, finds it already used
@@ -164,9 +164,9 @@ class SmartFinOAuthProvider:
         pending = self.pending.get(request_id)
         return pending if pending and pending.expires_at > time.time() else None
 
-    def _check_login(self, username: str, password: str) -> bool:
+    def _check_login(self, phone: str, password: str) -> bool:
         with self.sessions() as session:
-            return check_login(session, username, password) is not None
+            return check_login(session, phone, password) is not None
 
     # --- Tokens ---
 
@@ -328,8 +328,9 @@ def _form(request_id: str, error: str | None = None, status: int = 200) -> HTMLR
         "הוא לא יוכל לשנות דבר.</p>"
         '<form method="post" action="login">'
         f'<input type="hidden" name="request" value="{html.escape(request_id)}">'
-        '<label for="username">שם משתמש</label>'
-        '<input id="username" name="username" autocomplete="username" required autofocus>'
+        '<label for="phone">מספר טלפון</label>'
+        '<input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel" '
+        'dir="ltr" required autofocus>'
         '<label for="password">סיסמה</label>'
         '<input id="password" name="password" type="password" '
         'autocomplete="current-password" required>'

@@ -20,9 +20,9 @@ import { Money } from "../components/Money";
 import { Sheet } from "../components/Sheet";
 import { EmptyState, ErrorState, Loading } from "../components/States";
 import { useToast } from "../components/Toast";
-import { formatSyncTime } from "../lib/format";
+import { formatPhone, formatSyncTime, ltr } from "../lib/format";
 import { ConnectionsSection } from "./Connections";
-import { MIN_PASSWORD } from "./Login";
+import { MIN_PASSWORD, PHONE_ERROR } from "./Login";
 
 function SubScreen({ title, subtitle, action, children }: { title: string; subtitle?: string; action?: ReactNode; children: ReactNode }) {
   return (
@@ -76,8 +76,8 @@ export function SettingsScreen() {
       <section className="card card--flush" aria-label="משתמש">
         <button type="button" className="list-row" onClick={() => setEditingAccount(true)}>
           <span className="list-row-main">
-            <span className="list-row-title">שם משתמש וסיסמה</span>
-            <span className="list-row-sub">{me.data?.username ? `מחובר כ־${me.data.username}` : "שינוי פרטי הכניסה"}</span>
+            <span className="list-row-title">מספר טלפון וסיסמה</span>
+            <span className="list-row-sub">{me.data?.phone ? `מחובר כ־${ltr(formatPhone(me.data.phone))}` : "שינוי פרטי הכניסה"}</span>
           </span>
           <ChevronEnd size={18} />
         </button>
@@ -85,13 +85,13 @@ export function SettingsScreen() {
       <button type="button" className="button button--danger" onClick={() => logout.mutate()} disabled={logout.isPending}>
         התנתקות
       </button>
-      {editingAccount && <AccountSheet username={me.data?.username ?? ""} onClose={() => setEditingAccount(false)} />}
+      {editingAccount && <AccountSheet phone={me.data?.phone ?? ""} onClose={() => setEditingAccount(false)} />}
     </main>
   );
 }
 
-function AccountSheet({ username: currentUsername, onClose }: { username: string; onClose: () => void }) {
-  const [username, setUsername] = useState(currentUsername);
+function AccountSheet({ phone: currentPhone, onClose }: { phone: string; onClose: () => void }) {
+  const [phone, setPhone] = useState(formatPhone(currentPhone));
   const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [again, setAgain] = useState("");
@@ -103,16 +103,17 @@ function AccountSheet({ username: currentUsername, onClose }: { username: string
   if (tried && password && password.length < MIN_PASSWORD) error = `הסיסמה החדשה צריכה להיות באורך ${MIN_PASSWORD} תווים לפחות.`;
   else if (tried && password !== again) error = "הסיסמאות החדשות לא תואמות.";
   else if (update.error instanceof ApiError && update.error.status === 400) error = "הסיסמה הנוכחית שגויה.";
+  else if (update.error instanceof ApiError && update.error.status === 422) error = PHONE_ERROR;
   else if (update.error) error = errorMessage(update.error);
 
   const submit = () => {
     setTried(true);
-    if (!username.trim() || !current || (password && password.length < MIN_PASSWORD) || password !== again) return;
+    if (!phone.trim() || !current || (password && password.length < MIN_PASSWORD) || password !== again) return;
     update.mutate(
-      { current_password: current, username: username.trim(), ...(password ? { new_password: password } : {}) },
+      { current_password: current, phone: phone.trim(), ...(password ? { new_password: password } : {}) },
       {
         onSuccess: () => {
-          toast(password ? "הפרטים עודכנו. מכשירים אחרים נותקו." : "שם המשתמש עודכן.");
+          toast(password ? "הפרטים עודכנו. מכשירים אחרים נותקו." : "מספר הטלפון עודכן.");
           onClose();
         },
       },
@@ -120,7 +121,7 @@ function AccountSheet({ username: currentUsername, onClose }: { username: string
   };
 
   return (
-    <Sheet title="שם משתמש וסיסמה" onClose={onClose}>
+    <Sheet title="מספר טלפון וסיסמה" onClose={onClose}>
       <form
         style={{ display: "flex", flexDirection: "column", gap: 14 }}
         onSubmit={(e) => {
@@ -129,14 +130,16 @@ function AccountSheet({ username: currentUsername, onClose }: { username: string
         }}
       >
         <label className="field">
-          שם משתמש
+          מספר טלפון
           <input
             className="input"
-            autoComplete="username"
-            autoCapitalize="none"
+            type="tel"
+            inputMode="tel"
+            autoComplete="tel"
+            dir="ltr"
             maxLength={64}
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
+            value={phone}
+            onChange={(e) => setPhone(e.target.value)}
             required
           />
         </label>
@@ -168,7 +171,7 @@ function AccountSheet({ username: currentUsername, onClose }: { username: string
             {error}
           </p>
         )}
-        <button type="submit" className="button" disabled={update.isPending || !current || !username.trim()}>
+        <button type="submit" className="button" disabled={update.isPending || !current || !phone.trim()}>
           שמירה
         </button>
       </form>

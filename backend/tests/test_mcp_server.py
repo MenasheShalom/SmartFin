@@ -17,7 +17,7 @@ from tests.factories import make_account, make_category, make_txn
 
 PUBLIC = "https://smartfin.example.test"
 CALLBACK = "https://claude.ai/api/mcp/auth_callback"
-USERNAME, PASSWORD = "Menashe", "correct horse battery"
+PHONE, PASSWORD = "+972501234567", "correct horse battery"
 VERIFIER = "v" * 64
 CHALLENGE = base64.urlsafe_b64encode(hashlib.sha256(VERIFIER.encode()).digest()).rstrip(b"=").decode()
 
@@ -29,7 +29,7 @@ def settings():
 
 @pytest.fixture
 def web(engine, session, settings):
-    set_credentials(session, USERNAME, PASSWORD)
+    set_credentials(session, PHONE, PASSWORD)
     with TestClient(build_app(engine, settings), base_url=PUBLIC) as client:
         yield client
 
@@ -69,7 +69,7 @@ def start_login(web, client_id):
 def log_in(web, request_id, password=PASSWORD):
     return web.post(
         "/login",
-        data={"request": request_id, "username": USERNAME, "password": password},
+        data={"request": request_id, "phone": "050-1234567", "password": password},
         follow_redirects=False,
     )
 

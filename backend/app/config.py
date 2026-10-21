@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Hourly check that alerts when no sync has finished for 30 hours
     sync_watchdog: bool = True
 
-    # --- Login (the username and password are set in the web app on first start) ---
+    # --- Login (the phone number and password are set in the web app on first start) ---
     # Send the session cookie only over HTTPS (turn on behind Tailscale serve or another TLS proxy)
     cookie_secure: bool = False
 

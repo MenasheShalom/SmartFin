@@ -6,12 +6,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import auth
-from app.auth import COOKIE_NAME, hash_password, set_credentials, verify_password
+from app.auth import COOKIE_NAME, hash_password, normalize_phone, set_credentials, verify_password
 from app.db import get_session
 from app.main import app
 from app.models import AppUser, UserSession
 
-USERNAME = "Menashe"
+PHONE = "+972501234567"
 PASSWORD = "correct horse battery"
 CSRF = {"X-Requested-With": "smartfin"}
 
@@ -33,12 +33,12 @@ def fresh(engine):
 @pytest.fixture
 def anon(fresh, session):
     """Signed up, not logged in."""
-    set_credentials(session, USERNAME, PASSWORD)
+    set_credentials(session, PHONE, PASSWORD)
     return fresh
 
 
-def login(client, password=PASSWORD, username=USERNAME):
-    return client.post("/api/auth/login", json={"username": username, "password": password})
+def login(client, password=PASSWORD, phone=PHONE):
+    return client.post("/api/auth/login", json={"phone": phone, "password": password})
 
 
 def test_password_hash_round_trip():
@@ -63,7 +63,7 @@ def test_login_sets_a_strict_http_only_cookie(anon):
     assert cookie.startswith(f"{COOKIE_NAME}=")
     assert "HttpOnly" in cookie
     assert "SameSite=strict" in cookie
-    assert anon.get("/api/auth/me").json() == {"authenticated": True, "username": USERNAME}
+    assert anon.get("/api/auth/me").json() == {"authenticated": True, "phone": PHONE}
     assert anon.get("/api/categories").status_code == 200
 
 
@@ -102,9 +102,37 @@ def test_repeated_failures_are_throttled(anon):
     assert int(blocked.headers["Retry-After"]) > 0
 
 
-def test_username_ignores_case_and_spaces_but_must_match(anon):
-    assert login(anon, username=" menashe ").status_code == 200
-    assert login(anon, username="someone").status_code == 401
+@pytest.mark.parametrize(
+    ("typed", "expected"),
+    [
+        ("050-123-4567", "+972501234567"),
+        (" 0501234567 ", "+972501234567"),
+        ("+972 50 123 4567", "+972501234567"),
+        ("972501234567", "+972501234567"),
+        ("00972-50-1234567", "+972501234567"),
+        ("(050) 123.4567", "+972501234567"),
+        ("+1 415 555 0100", "+14155550100"),
+        ("501234567", None),
+        ("050", None),
+        ("menashe", None),
+        ("", None),
+    ],
+)
+def test_normalize_phone(typed, expected):
+    assert normalize_phone(typed) == expected
+
+
+def test_phone_matches_in_any_format_but_must_match(anon):
+    assert login(anon, phone="050-123-4567").status_code == 200
+    assert login(anon, phone="+972 50 123 4567").status_code == 200
+    assert login(anon, phone="050-123-4568").status_code == 401
+    assert login(anon, phone="someone").status_code == 401
+
+
+def test_a_username_from_before_phone_numbers_still_logs_in(anon, session):
+    set_credentials(session, "Menashe", None)
+    assert login(anon, phone=" menashe ").status_code == 200
+    assert login(anon).status_code == 401
 
 
 def test_login_before_setup(fresh):
@@ -113,27 +141,29 @@ def test_login_before_setup(fresh):
 
 
 def test_setup_creates_the_login_and_logs_in(fresh, session):
-    response = fresh.post("/api/auth/setup", json={"username": " Menashe ", "password": PASSWORD})
+    response = fresh.post("/api/auth/setup", json={"phone": " 050-1234567 ", "password": PASSWORD})
     assert response.status_code == 201
-    assert response.json() == {"authenticated": True, "username": "Menashe"}
-    assert fresh.get("/api/auth/me").json() == {"authenticated": True, "username": "Menashe"}
+    assert response.json() == {"authenticated": True, "phone": PHONE}
+    assert fresh.get("/api/auth/me").json() == {"authenticated": True, "phone": PHONE}
     assert fresh.get("/api/auth/status").json() == {"setup_required": False}
     user = session.scalars(select(AppUser)).one()
     assert verify_password(PASSWORD, user.password_hash)
 
 
 def test_setup_only_once(anon, session):
-    again = anon.post("/api/auth/setup", json={"username": "intruder", "password": "another-pass"})
+    again = anon.post("/api/auth/setup", json={"phone": "0521111111", "password": "another-pass"})
     assert again.status_code == 409
-    assert session.scalars(select(AppUser)).one().username == USERNAME
+    assert session.scalars(select(AppUser)).one().phone == PHONE
 
 
 @pytest.mark.parametrize(
     "body",
     [
-        {"username": "   ", "password": PASSWORD},
-        {"username": "x" * 65, "password": PASSWORD},
-        {"username": "me", "password": "short"},
+        {"phone": "   ", "password": PASSWORD},
+        {"phone": "me", "password": PASSWORD},
+        {"phone": "050", "password": PASSWORD},
+        {"phone": "0" * 65, "password": PASSWORD},
+        {"phone": PHONE, "password": "short"},
     ],
 )
 def test_setup_validates(fresh, body):
@@ -143,7 +173,7 @@ def test_setup_validates(fresh, body):
 
 def change(client, **body):
     body.setdefault("current_password", PASSWORD)
-    body.setdefault("username", USERNAME)
+    body.setdefault("phone", PHONE)
     return client.put("/api/auth/account", json=body, headers=CSRF)
 
 
@@ -151,19 +181,25 @@ def test_change_password_keeps_this_session_and_ends_the_others(anon, engine):
     other = TestClient(app)
     login(other)
     login(anon)
-    response = change(anon, username="menashe2", new_password="a-new-password")
+    response = change(anon, phone="052-7654321", new_password="a-new-password")
     assert response.status_code == 200
-    assert response.json() == {"authenticated": True, "username": "menashe2"}
+    assert response.json() == {"authenticated": True, "phone": "+972527654321"}
     assert anon.get("/api/auth/me").status_code == 200
     assert other.get("/api/auth/me").status_code == 401
-    assert login(anon, username="menashe2", password="a-new-password").status_code == 200
-    assert login(anon, username="menashe2").status_code == 401
+    assert login(anon, phone="0527654321", password="a-new-password").status_code == 200
+    assert login(anon, phone="0527654321").status_code == 401
 
 
-def test_change_username_only(anon, session):
+def test_change_phone_only(anon, session):
     login(anon)
-    assert change(anon, username="renamed").status_code == 200
-    assert login(anon, username="renamed").status_code == 200
+    assert change(anon, phone="0527654321").status_code == 200
+    assert login(anon, phone="0527654321").status_code == 200
+    assert login(anon).status_code == 401
+
+
+def test_change_needs_a_valid_phone(anon):
+    login(anon)
+    assert change(anon, phone="renamed").status_code == 422
 
 
 def test_change_needs_the_current_password(anon):
@@ -175,5 +211,5 @@ def test_change_needs_the_current_password(anon):
 def test_change_needs_login_and_csrf(anon):
     assert change(anon).status_code == 401
     login(anon)
-    body = {"current_password": PASSWORD, "username": USERNAME}
+    body = {"current_password": PASSWORD, "phone": PHONE}
     assert anon.put("/api/auth/account", json=body).status_code == 403

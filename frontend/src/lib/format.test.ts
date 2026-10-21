@@ -4,6 +4,7 @@ import {
   dayRange,
   formatDay,
   formatMoney,
+  formatPhone,
   greeting,
   israelToday,
   monthLabel,
@@ -64,5 +65,16 @@ describe("percent", () => {
     expect(percent(300, 200)).toBe(100);
     expect(percent(10, 0)).toBe(100);
     expect(percent(0, 0)).toBe(0);
+  });
+});
+
+describe("formatPhone", () => {
+  it("shows an Israeli number the local way", () => {
+    expect(formatPhone("+972501234567")).toBe("050-123-4567");
+    expect(formatPhone("+97231234567")).toBe("03-123-4567");
+  });
+  it("leaves other numbers and old usernames as they are", () => {
+    expect(formatPhone("+14155550100")).toBe("+14155550100");
+    expect(formatPhone("Menashe")).toBe("Menashe");
   });
 });

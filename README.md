@@ -44,7 +44,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 - [x] **Phase 4: Alerts.** Budget, low balance, large charge and failed sync alerts over Telegram / email
 - [x] **Phase 5: The app.** Login, cash-flow plan, weekly view, history, categorizing, settings
 - [x] **Phase 6: Hardening.** Backups, encrypted bank logins, stalled-sync alerts, non-root image
-- [x] **Phase 7: Set up from the app.** Username and password, and bank and card logins, managed in the web app
+- [x] **Phase 7: Set up from the app.** Phone number and password, and bank and card logins, managed in the web app
 - [x] **Phase 8: Ask Claude.** A read-only MCP server, so Claude (including the phone app) can answer questions about your money
 
 ## Setting it up
@@ -67,7 +67,7 @@ You need Docker with Docker Compose on the machine that will run SmartFin.
    ```
 
 3. **Create your login.** Open `http://<server address>:8000`. The first time, it asks you to
-   choose a username and password; do this right away, since until then anyone who can reach the
+   enter your phone number and choose a password; do this right away, since until then anyone who can reach the
    page could claim it. You can change both later under הגדרות.
 
 4. **Connect your banks and credit cards.** In הגדרות › חשבונות וסנכרון, tap
@@ -203,7 +203,7 @@ in it that changes data, and on Postgres its queries run in read-only transactio
 
 Claude connects from Anthropic's servers, not from your phone, so the MCP server needs a public
 HTTPS address. Only this service is published; the web app stays private. Connecting asks for
-your SmartFin username and password, and only Claude's own callback addresses can receive the
+your SmartFin phone number and password, and only Claude's own callback addresses can receive the
 login, so another app can't connect with it.
 
 1. **Publish it.** With [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) on the server
@@ -226,7 +226,7 @@ login, so another app can't connect with it.
    sign in. The connector then shows up in the phone app too.
 
 Claude stays connected for 90 days of not using it; using it extends that. Changing your
-username or password under הגדרות (or resetting it on the server) disconnects Claude, as it logs
+phone number or password under הגדרות (or resetting it on the server) disconnects Claude, as it logs
 out other browsers. To stop it altogether, remove `mcp` from `COMPOSE_PROFILES` and run
 `docker compose up -d --remove-orphans`, and turn off the funnel with
 `tailscale funnel --https=443 off`.
@@ -334,9 +334,12 @@ starts show no balance rather than a wrong one.
 
 ### Security
 
-- One login: a username and password, created in the web app on first start and stored in the
+- One login: a phone number and password, created in the web app on first start and stored in the
   database as a scrypt hash. Changing the password under הגדרות logs out every other device. If
   you forget it, reset it on the server with `docker compose exec backend python -m app.password`.
+  The number can be typed in any common form (050-1234567, +972 50 123 4567) and is stored as
+  +972501234567. A login made before phone numbers keeps its old username until a number is set
+  under הגדרות.
   Sessions are random tokens in an
   HttpOnly, SameSite=Strict cookie, stored hashed, valid 30 days; logging out ends them. After 5
   wrong passwords, each further try waits longer (up to 15 minutes).
@@ -453,7 +456,7 @@ curl -X POST localhost:8000/api/connections/sync     # sync every login now
 
 curl localhost:8000/api/auth/status              # {"setup_required": true} until the first sign-up
 curl -X PUT localhost:8000/api/auth/account -H 'content-type: application/json' \
-  -d '{"current_password": "...", "username": "me", "new_password": "..."}'
+  -d '{"current_password": "...", "phone": "050-1234567", "new_password": "..."}'
 ```
 
 ## Development
@@ -496,12 +499,12 @@ docker compose run --rm backend python -m app.demo --yes
 The Playwright tests log in and click through every screen on a phone-sized browser, check that
 nothing scrolls sideways, and run an accessibility scan (axe). They change data, so run them
 against a fresh database with the sample data, never your real one. On a database with no login
-yet, the first test creates it through the sign-up screen with `E2E_USERNAME` and `E2E_PASSWORD`:
+yet, the first test creates it through the sign-up screen with `E2E_PHONE` and `E2E_PASSWORD`:
 
 ```sh
 cd frontend
 npx playwright install chromium
-E2E_BASE_URL=http://localhost:8000 E2E_USERNAME=demo E2E_PASSWORD=demo-pass-123 npm run e2e
+E2E_BASE_URL=http://localhost:8000 E2E_PHONE=050-0000000 E2E_PASSWORD=demo-pass-123 npm run e2e
 ```
 
 The test that connects a bank is skipped unless `E2E_CONNECTIONS=1`: adding a login makes the
