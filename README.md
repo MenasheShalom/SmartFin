@@ -33,7 +33,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 | `backend/` | FastAPI API, SQLAlchemy models, Alembic migrations; serves the web app. Also the optional MCP server for Claude (`app/mcp_server`) |
 | `frontend/` | The web app: React, TypeScript, Vite |
 | `scraper/` | Node.js service using [israeli-bank-scrapers](https://github.com/eshaham/israeli-bank-scrapers) |
-| `ops/` | Backup script; `cloud-setup.sh` for a cloud server |
+| `ops/` | Backup script; `cloud-setup.sh` for a cloud server; `deploy.sh`, run by the Deploy workflow |
 | `docker-compose.yml` | Postgres, backend, scraper and backups on separate Docker networks |
 
 ## Status
@@ -245,6 +245,31 @@ to time: it holds all your financial history. To restore one:
 ```sh
 gunzip -c backups/smartfin-YYYYMMDD-HHMM.sql.gz | docker compose exec -T db psql -U smartfin smartfin
 ```
+
+## Deploying from GitHub
+
+On a server that has a public address (a cloud VM, say), the `Deploy` workflow can update it on
+every push to `main`: it connects over SSH and runs `ops/deploy.sh`, which pulls, rebuilds what
+changed and restarts. You can also run that script by hand. The workflow does nothing until its
+secrets are set.
+
+GitHub gets an SSH key to the machine that holds your bank logins, so the key is locked to that
+one script: whoever holds it can redeploy `main`, but not open a shell. On the server, in the
+SmartFin folder (which must be a git clone that can `git fetch` without a password):
+
+```sh
+ssh-keygen -t ed25519 -f ~/gh-deploy -N "" -C github-deploy
+echo "restrict,command=\"$PWD/ops/deploy.sh\" $(cat ~/gh-deploy.pub)" >> ~/.ssh/authorized_keys
+cat ~/gh-deploy                                   # → secret DEPLOY_SSH_KEY
+echo "<public IP> $(cut -d' ' -f1,2 /etc/ssh/ssh_host_ed25519_key.pub)"   # → DEPLOY_KNOWN_HOSTS
+```
+
+In the repository's Settings › Secrets and variables › Actions, add `DEPLOY_HOST` (the server's
+public IP), `DEPLOY_SSH_KEY` (the whole private key, `BEGIN` and `END` lines included) and
+`DEPLOY_KNOWN_HOSTS`. Then delete the private key from the server (`rm ~/gh-deploy`) and run the
+workflow once from the Actions tab to check it. `ops/deploy.sh` uses `sudo` for Docker, which
+the default user on cloud images may run without a password. Port 22 has to stay open to the
+internet, since GitHub's runners connect from changing addresses.
 
 ## How it works
 
