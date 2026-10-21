@@ -1,0 +1,40 @@
+# Deploys main to your server on every push, by running ops/deploy.sh there over SSH.
+# Off until the three secrets are set; see "Deploying from GitHub" in the README.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time; a push during a deploy waits for it
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Skip when the server isn't set up
+        if: env.DEPLOY_HOST == ''
+        run: echo "::notice::DEPLOY_HOST is not set; nothing to deploy to"
+
+      - name: Run ops/deploy.sh on the server
+        if: env.DEPLOY_HOST != ''
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # The key is limited to ops/deploy.sh on the server, so no command is sent
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            -o ServerAliveInterval=30 "ubuntu@$DEPLOY_HOST"
