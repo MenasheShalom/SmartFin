@@ -33,7 +33,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 | `backend/` | FastAPI API, SQLAlchemy models, Alembic migrations; serves the web app. Also the optional MCP server for Claude (`app/mcp_server`) |
 | `frontend/` | The web app: React, TypeScript, Vite |
 | `scraper/` | Node.js service using [israeli-bank-scrapers](https://github.com/eshaham/israeli-bank-scrapers) |
-| `ops/` | Backup script |
+| `ops/` | Backup script; `cloud-setup.sh` for a cloud server |
 | `docker-compose.yml` | Postgres, backend, scraper and backups on separate Docker networks |
 
 ## Status
@@ -117,6 +117,70 @@ Banks that ask for a one-time SMS code on every login (One Zero) are not support
 You can still write logins by hand in `scraper/config/accounts.json` (a list of
 `{"company": ..., "credentials": {...}}`, see `accounts.example.json`): the scraper reads it, and
 the first change made in the app folds it into the encrypted file and deletes it.
+
+## Running it in the cloud (Oracle Cloud, free)
+
+SmartFin needs a machine that is always on, with about 2 GB of RAM for the scraper's browser.
+Oracle Cloud's Always Free tier gives you one for nothing: up to 4 Arm CPUs and 24 GB of RAM.
+Its Jerusalem region gives the server an Israeli IP address, which banks are less likely to block
+than one abroad. Nothing is opened to the internet: you reach the app over
+[Tailscale](https://tailscale.com).
+
+1. **Create the account** at [oracle.com/cloud/free](https://www.oracle.com/cloud/free/). Pick
+   **Israel Central (Jerusalem)** as the home region: free resources live only there, and it
+   can't be changed later. A credit card is needed to verify who you are; the free tier doesn't
+   charge it.
+
+2. **Upgrade to Pay As You Go** (Billing › Upgrade and Manage Payment), and set a budget alert
+   of $1 (Billing › Budgets). You still pay nothing while you stay inside the free limits, but
+   Oracle no longer stops a free VM it considers idle (SmartFin is idle most of the day), and
+   free Arm capacity is easier to get.
+
+3. **Create the server.** Compute › Instances › Create instance:
+   - Image: **Canonical Ubuntu 24.04**
+   - Shape: Ampere › **VM.Standard.A1.Flex**, 2 OCPUs and 12 GB of memory (half the free
+     allowance)
+   - Networking: the defaults (a new network with a public IP address)
+   - SSH keys: "Generate a key pair for me" and **download the private key**
+
+   If it says "Out of capacity", try again later; it usually works within a day.
+
+4. **Run the setup script.** From your computer, with the key you downloaded and the server's
+   public IP address (on the instance's page):
+
+   ```sh
+   ssh -i ~/Downloads/ssh-key-*.key ubuntu@<public IP>
+   curl -fsSL https://raw.githubusercontent.com/MenasheShalom/SmartFin/main/ops/cloud-setup.sh | bash
+   ```
+
+   Add `-s -- --with-claude` after `bash` to also turn on the MCP server for Claude (see
+   [Ask Claude about your money](#ask-claude-about-your-money)).
+
+   It installs Docker and Tailscale, writes `.env` with new secrets, builds and starts SmartFin
+   (the first build takes 10 to 15 minutes), and prints the app's address. Along the way,
+   Tailscale prints a link to add the server to your account; if it asks you to turn on HTTPS
+   certificates (or Funnel, with `--with-claude`), open that link too, then run the script again.
+
+5. **Open it.** Install Tailscale on your phone and computer and sign in with the same account,
+   then open the address the script printed, like `https://<server>.<tailnet>.ts.net`. Create
+   your login straight away, and add your bank and card logins under הגדרות › חשבונות וסנכרון.
+
+To update SmartFin later, run the script again (it keeps `.env` and your data). Daily backups
+land in `~/SmartFin/backups` on the server; copy them somewhere else from time to time, e.g.
+over Tailscale: `scp 'ubuntu@<server>:SmartFin/backups/*.gz' .`
+
+**Moving from another machine.** To keep your history, copy the newest file from the old
+machine's `backups` folder to the server and restore it (this replaces the server's database,
+including the login):
+
+```sh
+scp backups/smartfin-YYYYMMDD-HHMM.sql.gz ubuntu@<server>:
+ssh ubuntu@<server>
+cd SmartFin && gunzip -c ~/smartfin-*.sql.gz | sudo docker compose exec -T db psql -U smartfin smartfin
+```
+
+Then add the bank and card logins again in the app: their encryption key stays on the old
+machine, on purpose.
 
 ## Using it on your phone
 
