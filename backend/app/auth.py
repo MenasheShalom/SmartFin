@@ -1,9 +1,10 @@
-"""Single-user login: a username and scrypt password hash in the database, and cookie sessions."""
+"""Single-user login: a phone number and scrypt password hash in the database, and cookie sessions."""
 
 import base64
 import hashlib
 import hmac
 import math
+import re
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
@@ -58,29 +59,43 @@ def verify_password(password: str, encoded: str) -> bool:
     return hmac.compare_digest(digest, base64.urlsafe_b64decode(expected))
 
 
-# Checked against when the username is wrong, so a wrong username takes as long as a wrong password
+# Checked against when the phone number is wrong, so a wrong number takes as long as a wrong password
 _DUMMY_HASH = hash_password(secrets.token_urlsafe(16))
 
+_PHONE_SEPARATORS = re.compile(r"[\s\-.()]")
+_E164 = re.compile(r"\+[1-9]\d{7,14}")
 
-def normalize_username(username: str) -> str:
-    return username.strip()
+
+def normalize_phone(phone: str) -> str | None:
+    """The number in international form (+972501234567), or None if it isn't a phone number.
+    A local number starting with 0 is taken as Israeli."""
+    digits = _PHONE_SEPARATORS.sub("", phone)
+    if digits.startswith("00"):
+        digits = "+" + digits[2:]
+    elif digits.startswith("0"):
+        digits = "+972" + digits[1:]
+    elif digits.startswith("972"):
+        digits = "+" + digits
+    return digits if _E164.fullmatch(digits) else None
 
 
 def get_user(session: Session) -> AppUser | None:
     return session.get(AppUser, USER_ID)
 
 
-def check_login(session: Session, username: str, password: str) -> AppUser | None:
-    """The user, if the username (ignoring case and surrounding spaces) and password match."""
+def check_login(session: Session, phone: str, password: str) -> AppUser | None:
+    """The user, if the phone number (in any common format) and password match."""
     user = get_user(session)
-    same_name = user is not None and (
-        user.username.casefold() == normalize_username(username).casefold()
+    same_phone = user is not None and (
+        normalize_phone(phone) == user.phone
+        # A login from before phone numbers still holds its username until changed in Settings
+        or phone.strip().casefold() == user.phone.casefold()
     )
-    ok = verify_password(password, user.password_hash if same_name else _DUMMY_HASH)
-    return user if ok and same_name else None
+    ok = verify_password(password, user.password_hash if same_phone else _DUMMY_HASH)
+    return user if ok and same_phone else None
 
 
-def create_user(session: Session, username: str, password: str) -> AppUser | None:
+def create_user(session: Session, phone: str, password: str) -> AppUser | None:
     """The first-start sign-up. None if a user already exists (the fixed id makes a
     concurrent second sign-up fail rather than add a second login)."""
     if get_user(session) is not None:
@@ -88,7 +103,7 @@ def create_user(session: Session, username: str, password: str) -> AppUser | Non
     now = datetime.now(UTC)
     user = AppUser(
         id=USER_ID,
-        username=normalize_username(username),
+        phone=phone,
         password_hash=hash_password(password),
         created_at=now,
         updated_at=now,
@@ -102,8 +117,9 @@ def create_user(session: Session, username: str, password: str) -> AppUser | Non
     return user
 
 
-def set_credentials(session: Session, username: str, password: str | None) -> AppUser:
-    """Create or update the login, e.g. from the password reset tool. Commits."""
+def set_credentials(session: Session, phone: str, password: str | None) -> AppUser:
+    """Create or update the login, e.g. from the password reset tool. phone is already
+    normalized. Commits."""
     user = get_user(session)
     now = datetime.now(UTC)
     if user is None:
@@ -111,7 +127,7 @@ def set_credentials(session: Session, username: str, password: str | None) -> Ap
             raise ValueError("a new user needs a password")
         user = AppUser(id=USER_ID, created_at=now, password_hash="")
         session.add(user)
-    user.username = normalize_username(username)
+    user.phone = phone
     if password is not None:
         user.password_hash = hash_password(password)
     user.updated_at = now

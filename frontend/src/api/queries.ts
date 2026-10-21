@@ -55,7 +55,7 @@ function query(params: object): string {
 
 export interface Me {
   authenticated: boolean;
-  username: string | null;
+  phone: string | null;
 }
 
 export const useMe = () => useQuery({ queryKey: keys.me, queryFn: () => api<Me>("/api/auth/me"), retry: false });
@@ -251,7 +251,7 @@ export function useAcknowledgeAlert() {
 }
 
 interface Credentials {
-  username: string;
+  phone: string;
   password: string;
 }
 
@@ -274,7 +274,7 @@ export function useSetup() {
 export function useUpdateAccount() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (body: { current_password: string; username: string; new_password?: string }) =>
+    mutationFn: (body: { current_password: string; phone: string; new_password?: string }) =>
       api<Me>("/api/auth/account", { method: "PUT", body }),
     onSuccess: (me) => client.setQueryData(keys.me, me),
   });

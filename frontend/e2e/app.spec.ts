@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { expectAccessible, expectNoHorizontalScroll, login, PASSWORD, USERNAME } from "./helpers";
+import { expectAccessible, expectNoHorizontalScroll, login, PASSWORD, PHONE } from "./helpers";
 
 test.describe.configure({ mode: "serial" });
 
@@ -9,7 +9,7 @@ test("on first start the login is created in the app", async ({ page, request })
   test.skip(!status.setup_required, "already set up");
   await page.goto("/");
   await expectAccessible(page);
-  await page.getByLabel("שם משתמש").fill(USERNAME);
+  await page.getByLabel("מספר טלפון").fill(PHONE);
   // the label also carries the "8 characters" hint
   await page.getByLabel(/^סיסמה/).fill(PASSWORD);
   await page.getByLabel("הסיסמה שוב").fill("something-else");
@@ -22,10 +22,10 @@ test("on first start the login is created in the app", async ({ page, request })
 
 test("a wrong password is refused", async ({ page }) => {
   await page.goto("/");
-  await page.getByLabel("שם משתמש").fill(USERNAME);
+  await page.getByLabel("מספר טלפון").fill(PHONE);
   await page.getByLabel("סיסמה", { exact: true }).fill("not-the-password");
   await page.getByRole("button", { name: "כניסה" }).click();
-  await expect(page.getByRole("alert")).toHaveText("שם המשתמש או הסיסמה שגויים.");
+  await expect(page.getByRole("alert")).toHaveText("מספר הטלפון או הסיסמה שגויים.");
 });
 
 test("every screen renders on a phone, fits the width and passes axe", async ({ page }) => {
@@ -210,15 +210,15 @@ test("logging out returns to the login screen", async ({ page }) => {
   await login(page);
   await page.goto("/settings");
   await page.getByRole("button", { name: "התנתקות" }).click();
-  await expect(page.getByLabel("שם משתמש")).toBeVisible();
+  await expect(page.getByLabel("מספר טלפון")).toBeVisible();
   await page.goto("/plan");
-  await expect(page.getByLabel("שם משתמש")).toBeVisible();
+  await expect(page.getByLabel("מספר טלפון")).toBeVisible();
 });
 
 test("the password can be changed in settings", async ({ page }) => {
   await login(page);
   await page.goto("/settings");
-  await page.getByRole("button", { name: /שם משתמש וסיסמה/ }).click();
+  await page.getByRole("button", { name: /מספר טלפון וסיסמה/ }).click();
   const sheet = page.getByRole("dialog");
   await sheet.getByLabel("סיסמה חדשה").fill("changed-pass-456");
   await sheet.getByLabel("הסיסמה החדשה שוב").fill("changed-pass-456");
@@ -230,7 +230,7 @@ test("the password can be changed in settings", async ({ page }) => {
   await expect(sheet).toBeHidden();
 
   // and back, so the other tests can still log in
-  await page.getByRole("button", { name: /שם משתמש וסיסמה/ }).click();
+  await page.getByRole("button", { name: /מספר טלפון וסיסמה/ }).click();
   await sheet.getByLabel("סיסמה חדשה").fill(PASSWORD);
   await sheet.getByLabel("הסיסמה החדשה שוב").fill(PASSWORD);
   await sheet.getByLabel("הסיסמה הנוכחית").fill("changed-pass-456");

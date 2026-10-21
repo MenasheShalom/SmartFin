@@ -153,3 +153,13 @@ export function percent(part: string | number, whole: string | number): number {
   if (w <= 0) return toNumber(part) > 0 ? 100 : 0;
   return Math.max(0, Math.min(100, (toNumber(part) / w) * 100));
 }
+
+/** +972501234567 → 050-123-4567, +97231234567 → 03-123-4567; other numbers and old usernames
+ * are shown as stored */
+export function formatPhone(phone: string): string {
+  const local = /^\+972(\d{8,9})$/.exec(phone);
+  if (!local) return phone;
+  const digits = `0${local[1]}`;
+  const area = digits.length - 7;
+  return `${digits.slice(0, area)}-${digits.slice(area, area + 3)}-${digits.slice(area + 3)}`;
+}
