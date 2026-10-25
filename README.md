@@ -114,6 +114,12 @@ What each company asks for:
 
 Banks that ask for a one-time SMS code on every login (One Zero) are not supported.
 
+A Leumi login also brings the charges of the credit cards Leumi shows on its site, read from the
+bank's card pages. Each card becomes its own credit-card account under "כרטיסי אשראי בלאומי",
+synced with the bank and reported separately, so don't also add those cards through `max`, or
+every charge appears twice. Foreign-currency charges are not read yet (the scraper log counts
+them), and charges still waiting to be billed are skipped like every other pending charge.
+
 You can still write logins by hand in `scraper/config/accounts.json` (a list of
 `{"company": ..., "credentials": {...}}`, see `accounts.example.json`): the scraper reads it, and
 the first change made in the app folds it into the encrypted file and deletes it.

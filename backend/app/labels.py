@@ -27,11 +27,13 @@ INSTITUTIONS = {
     "amex": "אמריקן אקספרס",
     "beyahadBishvilha": "ביחד בשבילך",
     "behatsdaa": "בהצדעה",
+    # Not a scraper company: Leumi's credit cards, read through the Leumi login
+    "leumiCards": "כרטיסי אשראי בלאומי",
 }
 
 
 # Credit cards and card clubs; every other company is a bank
-CARD_COMPANIES = {"max", "visaCal", "isracard", "amex", "beyahadBishvilha", "behatsdaa"}
+CARD_COMPANIES = {"max", "visaCal", "isracard", "amex", "beyahadBishvilha", "behatsdaa", "leumiCards"}
 
 
 def institution_label(company_id: str) -> str:
