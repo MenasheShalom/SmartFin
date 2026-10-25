@@ -63,13 +63,28 @@ export function brokerBody(template, moduleName, fields) {
   return JSON.stringify({ moduleName, reqObj: JSON.stringify(reqObj), version: template.version });
 }
 
+// How the card module says a card or bill has no charges (the site itself just shows nothing)
+const NO_DATA = /no data/i;
+
 export function parseBrokerReply(moduleName, text) {
   const data = JSON.parse(JSON.parse(text).jsonResp);
   if (data.SOStatus?.Status === false) {
     const messages = (data.SOStatus.SOStatusItem ?? []).map((item) => item.Message).join('; ');
-    throw new Error(`${moduleName} was refused${messages ? `: ${messages}` : ''}`);
+    const err = new Error(`${moduleName} was refused${messages ? `: ${messages}` : ''}`);
+    err.noData = NO_DATA.test(messages);
+    throw err;
   }
   return data;
+}
+
+// A bill with no charges (or a blocked card) is refused rather than answered empty
+async function chargesOrNothing(call, fields) {
+  try {
+    return await call(CARD_MODULE, fields);
+  } catch (err) {
+    if (err.noData) return { Activity: null };
+    throw err;
+  }
 }
 
 async function callBroker(page, template, moduleName, fields) {
@@ -159,7 +174,7 @@ export async function fetchCardAccounts(call, startDate, log = console) {
     const pending = new Map();
     let foreignSkipped = 0;
     for (const cycle of cyclesSince(Graph?.DebitMonthItems ?? [], startDate)) {
-      const { Activity } = await call(CARD_MODULE, {
+      const { Activity } = await chargesOrNothing(call, {
         ...base,
         Operation: OPERATION_CHARGES,
         CardPeriodType: cycle.DefaultMonth ? PERIOD_CURRENT : PERIOD_BY_DATE,
