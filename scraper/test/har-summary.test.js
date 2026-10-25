@@ -58,6 +58,37 @@ test('no secret survives, but field names and formats do', () => {
   assert.deepEqual(inner['99-999-999999'], { balance: 'num:9999' });
 });
 
+test('code numbers and bank labels are kept, account and card numbers are not', () => {
+  const masked = maskValue({
+    CardIndex: 2,
+    Operation: 3,
+    TypeOfTransaction: 100,
+    CurrencyCode: '376',
+    PaymentsNumber: '6',
+    TypeOfTransactionDesc: 'תשלומים   ',
+    DealDescription: 'תשלום 2 מתוך 6',
+    CardLast4Digits: '1234',
+    RelatedAccountNumber: '12345678901234',
+    CardTransactionId: '1234',
+    AmountDouble: 99.9,
+    CardType: 12345,
+  });
+  assert.deepEqual(masked, {
+    CardIndex: 2,
+    Operation: 3,
+    TypeOfTransaction: 100,
+    CurrencyCode: '376',
+    PaymentsNumber: '6',
+    TypeOfTransactionDesc: 'תשלומים',
+    DealDescription: 'תשלום 2 מתוך 6',
+    CardLast4Digits: '9999',
+    RelatedAccountNumber: '99999999999999',
+    CardTransactionId: '9999',
+    AmountDouble: 'num:99.9',
+    CardType: 'num:99999',
+  });
+});
+
 test('--keep-text keeps digit-free strings only', () => {
   assert.equal(maskString('שופרסל דיל', { keepText: true }), 'שופרסל דיל');
   assert.equal(maskString('abc123', { keepText: true }), 'xxx999');

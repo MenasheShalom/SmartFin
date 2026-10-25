@@ -13,6 +13,19 @@ const MAX_STRING = 60;
 const CURRENCY = /^[A-Z]{3}$/;
 // Endpoint names in URLs (Broker.svc, UC_SO_27_GetBusinessAccountTrx) are needed to find the calls
 const URL_WORD = /^[A-Za-z][A-Za-z0-9_.-]{0,59}$/;
+// Small code numbers (which list to fetch, transaction type, currency) are the same for every
+// customer and are needed to make the requests; account and card numbers never match these keys
+const CODE_KEY = /(Index|Operation|Type|Code|Flag|Status|Indication|^TypeOf\w+|^PaymentsNumber)$/;
+const CODE_VALUE = /^-?\d{1,4}$/;
+// The bank's own labels (transaction type, merchant category, installment text)
+const LABEL_KEY = /(Desc|Description)$/;
+
+function keepAsIs(key, value) {
+  if (CODE_KEY.test(key) && (typeof value === 'number' || typeof value === 'string') && CODE_VALUE.test(String(value))) {
+    return true;
+  }
+  return LABEL_KEY.test(key) && typeof value === 'string' && parseJson(value) === undefined;
+}
 
 export function maskString(value, { keepText = false } = {}) {
   if (CURRENCY.test(value)) return value;
@@ -50,7 +63,10 @@ export function maskValue(value, options = {}) {
   }
   return Object.fromEntries(
     // A key with digits in it can itself be an account or card number
-    Object.entries(value).map(([key, item]) => [/\d{4}/.test(key) ? maskString(key) : key, maskValue(item, options)]),
+    Object.entries(value).map(([key, item]) => [
+      /\d{4}/.test(key) ? maskString(key) : key,
+      keepAsIs(key, item) ? (typeof item === 'string' ? item.trim().slice(0, MAX_STRING) : item) : maskValue(item, options),
+    ]),
   );
 }
 
