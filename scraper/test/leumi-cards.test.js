@@ -65,7 +65,13 @@ test('replies are unwrapped and refusals raise', () => {
   assert.deepEqual(parseBrokerReply('M', reply({ SOStatus: { Status: true }, A: 1 })), { SOStatus: { Status: true }, A: 1 });
   assert.throws(
     () => parseBrokerReply('M', reply({ SOStatus: { Status: false, SOStatusItem: [{ Message: 'שגיאה' }] } })),
-    /M was refused: שגיאה/,
+    (err) => /M was refused: שגיאה/.test(err.message) && err.noData === false,
+  );
+  // What the site gets for a blocked card's charges
+  const noData = 'CRITICAL ERROR - MS_CreditCardsInfo : faild to create Activity or no data';
+  assert.throws(
+    () => parseBrokerReply('M', reply({ SOStatus: { Status: false, SOStatusItem: [{ Code: 1, Message: noData }] } })),
+    (err) => err.noData === true,
   );
 });
 
@@ -129,18 +135,20 @@ test('every card and bill is fetched; pending charges come from the open bill', 
         ],
       },
     }),
-    3: (fields) =>
-      fields.CardIndex === 9
-        ? { Activity: null }
-        : {
+    3: (fields) => {
+      if (fields.CardIndex === 9) {
+        throw Object.assign(new Error('UC_MS_125_CreditCardsInfo was refused: no data'), { noData: true });
+      }
+      return {
             Activity: {
               TabNisTransactionItems: [{ NisTransactionItems: [item({ CardTransactionId: fields.CycleDate })] }],
               TabForeignTransactionItems: [],
               RealTimeTransItems: fields.CardPeriodType === 2
                 ? [{ CreditTransactionIdStr: '77', DebitCardFirmName: 'קפה  ', AmountDouble: 18, DateDealUTC: '2026-10-24T21:00:00.000Z', MCC4Description: ' מסעדות ' }]
                 : null,
-            },
           },
+        };
+    },
   };
   const call = async (moduleName, fields) => {
     calls.push([moduleName, fields]);
@@ -167,6 +175,15 @@ test('every card and bill is fetched; pending charges come from the open bill', 
   // The open bill is asked for as "current", older ones by date, and the 2025 bill not at all
   const charges = calls.filter(([, f]) => f.Operation === 3 && f.CardIndex === 8).map(([, f]) => [f.CardPeriodType, f.CycleDate]);
   assert.deepEqual(charges, [[2, '2026-11-02T00:00:00'], [99, '2026-10-02T00:00:00']]);
+});
+
+test('any other refusal still fails the card sync', async () => {
+  const call = async (moduleName, fields) => {
+    if (moduleName === 'UC_SO_GetCreditCardsInfo') return { CreditCardsItems: [{ CardIndex: 1, CardLast4Digits: '1234' }] };
+    if (fields.Operation === 2) return { Graph: { DebitMonthItems: [{ CycleDate: '2026-11-02T00:00:00', DefaultMonth: true }] } };
+    throw Object.assign(new Error('session expired'), { noData: false });
+  };
+  await assert.rejects(fetchCardAccounts(call, new Date('2026-09-01T00:00:00Z'), quiet), /session expired/);
 });
 
 test('foreign-currency charges are counted and skipped, not guessed at', async () => {
