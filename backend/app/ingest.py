@@ -21,7 +21,8 @@ from app.models import (
 )
 
 # israeli-bank-scrapers company ids that are card issuers rather than banks
-CARD_COMPANIES = {"amex", "behatsdaa", "beyahadBishvilha", "isracard", "max", "visaCal"}
+# (leumiCards is SmartFin's own: Leumi's cards, read through the Leumi login)
+CARD_COMPANIES = {"amex", "behatsdaa", "beyahadBishvilha", "isracard", "leumiCards", "max", "visaCal"}
 
 CENT = Decimal("0.01")
 

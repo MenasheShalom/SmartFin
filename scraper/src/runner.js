@@ -4,16 +4,18 @@ import path from 'node:path';
 import { createScraper } from 'israeli-bank-scrapers-core';
 
 import { maskAccountNumber } from './config.js';
+import { CARDS_COMPANY, LeumiWithCardsScraper } from './leumi-cards.js';
 
 export function defaultScrape(account, settings, startDate) {
-  const scraper = createScraper({
+  const options = {
     companyId: account.company,
     startDate,
     combineInstallments: false,
     executablePath: settings.executablePath,
     // Needed when Chromium runs as root inside a container
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
-  });
+  };
+  const scraper = account.company === 'leumi' ? new LeumiWithCardsScraper(options) : createScraper(options);
   return scraper.scrape(account.credentials);
 }
 
@@ -71,6 +73,35 @@ export async function runAll(accounts, settings, {
   startDate.setDate(startDate.getDate() - settings.daysBack);
   let allOk = true;
 
+  // Log, save and ingest one company's result; true when it scraped and ingested cleanly
+  async function report(company, result, payload) {
+    let ok = true;
+    if (payload.success) {
+      for (const a of payload.accounts) {
+        log.log(`[${company}] account ${maskAccountNumber(a.accountNumber)}: ${a.txns.length} transactions`);
+      }
+    } else {
+      ok = false;
+      log.error(`[${company}] scrape failed: ${payload.error_type}${payload.error_message ? ` — ${payload.error_message}` : ''}`);
+    }
+
+    if (settings.saveRaw || dryRun) {
+      log.log(`[${company}] raw result saved to ${await saveRaw(settings, company, result)}`);
+    }
+    if (dryRun) return ok;
+
+    try {
+      const summary = await ingest(settings, payload);
+      if (payload.success) {
+        log.log(`[${company}] stored ${summary.added} new, ${summary.duplicates} already known, ${summary.pending_skipped} pending skipped`);
+      }
+    } catch (err) {
+      ok = false;
+      log.error(`[${company}] could not send results to the backend: ${err.message}`);
+    }
+    return ok;
+  }
+
   for (const account of accounts) {
     onStart(account);
     const startedAt = now();
@@ -82,35 +113,17 @@ export async function runAll(accounts, settings, {
     } catch (err) {
       result = { success: false, errorType: 'EXCEPTION', errorMessage: err.message };
     }
-    const payload = toPayload(account.company, startedAt, now(), result);
+    const finishedAt = now();
+    // A Leumi login also brings its credit cards, stored as their own institution
+    const parts = [[account.company, result]];
+    if (result.cards) parts.push([CARDS_COMPANY, result.cards]);
 
-    if (payload.success) {
-      for (const a of payload.accounts) {
-        log.log(`[${account.company}] account ${maskAccountNumber(a.accountNumber)}: ${a.txns.length} transactions`);
-      }
-    } else {
-      allOk = false;
-      log.error(`[${account.company}] scrape failed: ${payload.error_type}${payload.error_message ? ` — ${payload.error_message}` : ''}`);
+    for (const [company, part] of parts) {
+      const payload = toPayload(company, startedAt, finishedAt, part);
+      if (!(await report(company, part, payload))) allOk = false;
+      // The login's status follows its own result; a card failure is reported on its own run
+      if (company === account.company) onResult(account, payload);
     }
-
-    if (settings.saveRaw || dryRun) {
-      log.log(`[${account.company}] raw result saved to ${await saveRaw(settings, account.company, result)}`);
-    }
-    if (dryRun) {
-      onResult(account, payload);
-      continue;
-    }
-
-    try {
-      const summary = await ingest(settings, payload);
-      if (payload.success) {
-        log.log(`[${account.company}] stored ${summary.added} new, ${summary.duplicates} already known, ${summary.pending_skipped} pending skipped`);
-      }
-    } catch (err) {
-      allOk = false;
-      log.error(`[${account.company}] could not send results to the backend: ${err.message}`);
-    }
-    onResult(account, payload);
   }
   return allOk;
 }

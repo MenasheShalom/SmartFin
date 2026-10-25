@@ -28,3 +28,6 @@ backups/
 scraper/config/accounts.json.enc*
 scraper/keys/
 frontend/*.tsbuildinfo
+
+# HAR captures hold live session cookies
+*.har

@@ -63,6 +63,25 @@ test('a failing account is logged and the rest still run', async () => {
   assert.equal(sent[1].success, true);
 });
 
+test('Leumi cards are ingested as their own institution; the login status follows the bank', async () => {
+  const sent = [];
+  const statuses = [];
+  const result = await runAll([accounts[0]], settings, {
+    scrape: async () => ({ ...ok, cards: { success: false, errorType: 'GENERIC', errorMessage: 'refused' } }),
+    ingest: async (_settings, payload) => {
+      sent.push(payload);
+      return { added: 0, duplicates: 0, pending_skipped: 0 };
+    },
+    onResult: (_, payload) => statuses.push(payload.success),
+    log: quiet,
+  });
+  assert.equal(result, false);
+  assert.deepEqual(sent.map((p) => [p.institution, p.success]), [['leumi', true], ['leumiCards', false]]);
+  assert.equal(sent[1].error_message, 'refused');
+  assert.ok(!('cards' in sent[0]));
+  assert.deepEqual(statuses, [true]);
+});
+
 test('a backend error is reported but does not stop the run', async () => {
   let calls = 0;
   const result = await runAll(accounts, settings, {

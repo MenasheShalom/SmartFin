@@ -121,6 +121,12 @@ def test_same_account_number_at_another_institution_is_separate(client, session)
     assert len(session.scalars(select(Transaction)).all()) == 2
 
 
+def test_leumi_cards_are_credit_card_accounts(client, session):
+    post(client, result([txn()], institution="leumiCards"))
+    account = session.scalars(select(Account)).one()
+    assert account.account_type == AccountType.CREDIT_CARD
+
+
 def test_failed_scrape_is_logged(client, session):
     response = post(
         client,
