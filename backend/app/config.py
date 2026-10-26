@@ -23,10 +23,6 @@ class Settings(BaseSettings):
     # Hourly check that alerts when no sync has finished for 30 hours
     sync_watchdog: bool = True
 
-    # --- Login (the phone number and password are set in the web app on first start) ---
-    # Send the session cookie only over HTTPS (turn on behind Tailscale serve or another TLS proxy)
-    cookie_secure: bool = False
-
     # --- MCP server (python -m app.mcp_server): Claude reads the data, behind the same login ---
     # The public HTTPS address it is reached at, e.g. https://smartfin.example.ts.net. Claude
     # connects to <this>/mcp; the server refuses to start while it is unset.

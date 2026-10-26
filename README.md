@@ -197,9 +197,22 @@ app.
 
 From outside the home, use [Tailscale](https://tailscale.com) rather than opening a port on your
 router: install it on the server and the phone, then on the server run
-`tailscale serve --bg 8000`. That gives the app an HTTPS address on your tailnet; set
-`COOKIE_SECURE=true` in `.env` so the login cookie is only ever sent over HTTPS. To make SmartFin
-reachable only through Tailscale, also set `BIND_ADDRESS=127.0.0.1`.
+`tailscale serve --bg 8000`. That gives the app an HTTPS address on your tailnet; opened there,
+the login cookie is only ever sent over HTTPS. To make SmartFin reachable only through
+Tailscale, also set `BIND_ADDRESS=127.0.0.1`.
+
+On a server set up with `ops/cloud-setup.sh`, every deploy runs `ops/tailscale-serve.sh`, which
+sets this up from `.env` and resets anything changed by hand:
+
+| Address | What | Who can reach it |
+|---|---|---|
+| `https://<server>.<tailnet>.ts.net` | the app, or the MCP server when `COMPOSE_PROFILES=mcp` | tailnet; the MCP server is public (Funnel) |
+| `https://<server>.<tailnet>.ts.net:8443` | the app, when `COMPOSE_PROFILES=mcp` | tailnet |
+| `http://<server's Tailscale IP>:8000` | the app, when `BIND_ADDRESS=127.0.0.1` | tailnet |
+
+The last one is for a phone where the `ts.net` name doesn't resolve through Tailscale (it then
+reaches the public Funnel address instead and fails with an SSL error). The browser sees plain
+HTTP, but Tailscale encrypts the connection, and the login works there too.
 
 ## Ask Claude about your money
 
@@ -258,8 +271,9 @@ gunzip -c backups/smartfin-YYYYMMDD-HHMM.sql.gz | docker compose exec -T db psql
 ## Deploying from GitHub
 
 On a server that has a public address (a cloud VM, say), the `Deploy` workflow can update it on
-every push to `main`: it connects over SSH and runs `ops/deploy.sh`, which pulls, rebuilds what
-changed and restarts. You can also run that script by hand. The workflow does nothing until its
+every push to `main`: it connects over SSH and runs `ops/deploy.sh`, which pulls, publishes
+SmartFin through Tailscale (`ops/tailscale-serve.sh`), rebuilds what changed and restarts. You can
+also run that script by hand. The workflow does nothing until its
 secrets are set.
 
 GitHub gets an SSH key to the machine that holds your bank logins, so the key is locked to that

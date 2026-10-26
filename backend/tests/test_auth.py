@@ -67,6 +67,22 @@ def test_login_sets_a_strict_http_only_cookie(anon):
     assert anon.get("/api/categories").status_code == 200
 
 
+@pytest.mark.parametrize(
+    "base_url, headers, secure",
+    [
+        ("http://100.87.54.45:8000", {}, False),  # the Tailscale IP: plain HTTP, Tailscale encrypts
+        ("http://127.0.0.1:8000", {"X-Forwarded-Proto": "https"}, True),  # behind Tailscale serve
+        ("http://127.0.0.1:8000", {"X-Forwarded-Proto": "https, http"}, True),
+        ("https://smartfin.example", {}, True),
+    ],
+)
+def test_cookie_is_secure_exactly_when_the_browser_used_https(anon, base_url, headers, secure):
+    anon.base_url = base_url
+    response = anon.post("/api/auth/login", json={"phone": PHONE, "password": PASSWORD}, headers=headers)
+    assert response.status_code == 200
+    assert ("Secure" in response.headers["set-cookie"]) == secure
+
+
 def test_wrong_password(anon):
     assert login(anon, "nope").status_code == 401
     assert anon.get("/api/categories").status_code == 401
