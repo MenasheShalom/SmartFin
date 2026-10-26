@@ -197,9 +197,9 @@ app.
 
 From outside the home, use [Tailscale](https://tailscale.com) rather than opening a port on your
 router: install it on the server and the phone, then on the server run
-`tailscale serve --bg 8000`. That gives the app an HTTPS address on your tailnet; set
-`COOKIE_SECURE=true` in `.env` so the login cookie is only ever sent over HTTPS. To make SmartFin
-reachable only through Tailscale, also set `BIND_ADDRESS=127.0.0.1`.
+`tailscale serve --bg 8000`. That gives the app an HTTPS address on your tailnet; opened there,
+the login cookie is only ever sent over HTTPS. To make SmartFin reachable only through
+Tailscale, also set `BIND_ADDRESS=127.0.0.1`.
 
 On a server set up with `ops/cloud-setup.sh`, every deploy runs `ops/tailscale-serve.sh`, which
 sets this up from `.env` and resets anything changed by hand:
@@ -211,8 +211,8 @@ sets this up from `.env` and resets anything changed by hand:
 | `http://<server's Tailscale IP>:8000` | the app, when `BIND_ADDRESS=127.0.0.1` | tailnet |
 
 The last one is for a phone where the `ts.net` name doesn't resolve through Tailscale (it then
-reaches the public Funnel address instead and fails with an SSL error). It is still encrypted by
-Tailscale, but the browser sees plain HTTP, so logging in there needs `COOKIE_SECURE=false`.
+reaches the public Funnel address instead and fails with an SSL error). The browser sees plain
+HTTP, but Tailscale encrypts the connection, and the login works there too.
 
 ## Ask Claude about your money
 

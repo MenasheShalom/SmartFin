@@ -19,7 +19,6 @@ from app.auth import (
     token_hash,
     verify_password,
 )
-from app.config import Settings, get_settings
 from app.models import UserSession
 from app.routers.common import SessionDep
 
@@ -70,14 +69,23 @@ def _client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-def _start_session(session: SessionDep, response: Response, settings: Settings) -> None:
+def _is_https(request: Request) -> bool:
+    """Whether the browser came in over HTTPS, directly or through a TLS proxy such as Tailscale
+    serve. The proxy's header is trusted as is: faking it only changes the faker's own cookie."""
+    forwarded = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+    return request.url.scheme == "https" or forwarded == "https"
+
+
+def _start_session(session: SessionDep, request: Request, response: Response) -> None:
     token, expires = create_session(session)
     response.set_cookie(
         COOKIE_NAME,
         token,
         expires=expires,
         httponly=True,
-        secure=settings.cookie_secure,
+        # Over HTTPS the cookie never goes out over plain HTTP; over plain HTTP (the Tailscale IP,
+        # which Tailscale encrypts underneath) a Secure cookie would be refused by the browser
+        secure=_is_https(request),
         samesite="strict",
         path="/",
     )
@@ -89,28 +97,17 @@ def status(session: SessionDep) -> Status:
 
 
 @router.post("/setup", status_code=201)
-def setup(
-    body: Credentials,
-    response: Response,
-    session: SessionDep,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> Me:
+def setup(body: Credentials, request: Request, response: Response, session: SessionDep) -> Me:
     """First start: create the one login and log in with it."""
     user = create_user(session, body.phone, body.password)
     if user is None:
         raise HTTPException(409, "Already set up")
-    _start_session(session, response, settings)
+    _start_session(session, request, response)
     return Me(authenticated=True, phone=user.phone)
 
 
 @router.post("/login")
-def login(
-    body: LoginIn,
-    request: Request,
-    response: Response,
-    session: SessionDep,
-    settings: Annotated[Settings, Depends(get_settings)],
-) -> Me:
+def login(body: LoginIn, request: Request, response: Response, session: SessionDep) -> Me:
     if get_user(session) is None:
         raise HTTPException(503, "Not set up yet")
     key = _client_key(request)
@@ -122,7 +119,7 @@ def login(
         throttle.failed(key)
         raise HTTPException(401, "Wrong phone number or password")
     throttle.succeeded(key)
-    _start_session(session, response, settings)
+    _start_session(session, request, response)
     return Me(authenticated=True, phone=user.phone)
 
 

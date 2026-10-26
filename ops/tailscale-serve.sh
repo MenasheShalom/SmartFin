@@ -64,9 +64,6 @@ fi
 if [ "$(env_value BIND_ADDRESS)" = "127.0.0.1" ] && [ -n "$ip" ]; then
   ts serve --bg --tcp=8000 tcp://localhost:8000
   ip_url="http://$ip:8000"
-  if [ "$(env_value COOKIE_SECURE)" = "true" ]; then
-    warn "logging in at $ip_url needs COOKIE_SECURE=false in .env (Tailscale still encrypts it)"
-  fi
 fi
 
 echo "tailscale: app at $app_url${ip_url:+ and $ip_url} (tailnet only)"

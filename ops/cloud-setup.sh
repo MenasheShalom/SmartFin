@@ -77,9 +77,8 @@ if [ ! -f .env ]; then
   chmod 600 .env
   set_env POSTGRES_PASSWORD "$(openssl rand -hex 32)"
   set_env INGEST_TOKEN "$(openssl rand -hex 32)"
-  # Only Tailscale reaches the app, over HTTPS
+  # Only Tailscale reaches the app
   set_env BIND_ADDRESS 127.0.0.1
-  set_env COOKIE_SECURE true
 else
   echo ".env already exists; keeping it"
 fi
