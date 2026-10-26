@@ -168,7 +168,8 @@ than one abroad. Nothing is opened to the internet: you reach the app over
    certificates (or Funnel, with `--with-claude`), open that link too, then run the script again.
 
 5. **Open it.** Install Tailscale on your phone and computer and sign in with the same account,
-   then open the address the script printed, like `https://<server>.<tailnet>.ts.net`. Create
+   then open the address the script printed, like `https://<server>.<tailnet>.ts.net` (with
+   `--with-claude`, `https://<server>.<tailnet>.ts.net:8443`, since Claude takes port 443). Create
    your login straight away, and add your bank and card logins under הגדרות › חשבונות וסנכרון.
 
 To update SmartFin later, run the script again (it keeps `.env` and your data). Daily backups
@@ -220,7 +221,9 @@ login, so another app can't connect with it.
    ```
 
    That gives `https://<machine>.<tailnet>.ts.net`, on the standard HTTPS port. Use that rather
-   than another Funnel port such as 8443: Claude's connector didn't reach a server on 8443. A
+   than another Funnel port such as 8443: Claude's connector didn't reach a server on 8443. Each
+   port has one target, so if the app was served on that address, this replaces it; move the app
+   to port 8443, still on your tailnet only, with `tailscale serve --bg --https=8443 8000`. A
    [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
    to `http://localhost:8001` works too.
 
