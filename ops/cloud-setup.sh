@@ -8,9 +8,8 @@
 #
 # It installs Docker and Tailscale, clones SmartFin to ~/SmartFin, writes .env with fresh secrets,
 # starts everything, and serves the app over HTTPS on your tailnet only. Nothing is opened to the
-# internet, except the MCP server with --with-claude (through Tailscale Funnel). Claude's connector
-# reaches only the standard HTTPS port, so with --with-claude the MCP server takes port 443 and the
-# app moves to port 8443.
+# internet, except the MCP server with --with-claude (through Tailscale Funnel); see
+# ops/tailscale-serve.sh for the layout.
 # Safe to run again: it keeps an existing .env and data, and pulls and rebuilds.
 set -euo pipefail
 
@@ -90,23 +89,19 @@ if $WITH_CLAUDE; then
   set_env MCP_PUBLIC_URL "https://${ts_name}"
 fi
 
-step "Building and starting SmartFin (the first build takes several minutes)"
-sudo docker compose up -d --build
-
-step "Serving the app on your tailnet"
-# Start from a clean slate, so a re-run never leaves the app or the MCP server on the wrong port.
-# If HTTPS certificates are off for the tailnet, the next command prints a link to turn them on;
+step "Publishing SmartFin through Tailscale"
+# If HTTPS certificates or Funnel are off for the tailnet, this prints a link to turn them on;
 # then run the script again.
-sudo tailscale serve reset
-if $WITH_CLAUDE; then
-  # Funnel puts only the MCP server on the internet; it asks to be enabled the first time
-  sudo tailscale funnel --bg 8001
-  sudo tailscale serve --bg --https=8443 8000
+sh ops/tailscale-serve.sh
+if $WITH_CLAUDE || grep -qE '^COMPOSE_PROFILES=.*mcp' .env; then
+  WITH_CLAUDE=true
   app_url="https://${ts_name}:8443"
 else
-  sudo tailscale serve --bg 8000
   app_url="https://${ts_name}"
 fi
+
+step "Building and starting SmartFin (the first build takes several minutes)"
+sudo docker compose up -d --build
 
 step "Done"
 cat <<EOF
