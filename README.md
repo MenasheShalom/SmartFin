@@ -277,8 +277,14 @@ SmartFin through Tailscale (`ops/tailscale-serve.sh`), rebuilds what changed and
 also run that script by hand. The workflow does nothing until its
 secrets are set.
 
+Started from the Actions tab, the workflow also has a **backfill** action: it syncs every login
+as far back as a newly added one goes (`SCRAPER_FIRST_MONTHS_BACK`), in the background, to fill
+in older history; records already stored are skipped. On the server,
+`sudo docker logs -f smartfin-backfill` follows it. By hand, the same is
+`docker compose run --rm scraper npm run scrape-once -- --full-history`.
+
 GitHub gets an SSH key to the machine that holds your bank logins, so the key is locked to that
-one script: whoever holds it can redeploy `main`, but not open a shell. On the server, in the
+one script: whoever holds it can redeploy `main` or start a backfill, but not open a shell. On the server, in the
 SmartFin folder (which must be a git clone that can `git fetch` without a password):
 
 ```sh
