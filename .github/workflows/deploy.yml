@@ -6,6 +6,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy, or backfill: sync every login as far back as each site allows"
+        type: choice
+        options: [deploy, backfill]
+        default: deploy
 
 # One deploy at a time; a push during a deploy waits for it
 concurrency:
@@ -30,11 +36,14 @@ jobs:
         env:
           SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          # A push has no inputs: deploy
+          ACTION: ${{ inputs.action || 'deploy' }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          # The key is limited to ops/deploy.sh on the server, so no command is sent
+          # The key runs only ops/deploy.sh on the server; the action is passed on to it as
+          # SSH_ORIGINAL_COMMAND, and anything but "backfill" deploys
           ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            -o ServerAliveInterval=30 "ubuntu@$DEPLOY_HOST"
+            -o ServerAliveInterval=30 "ubuntu@$DEPLOY_HOST" "$ACTION"
