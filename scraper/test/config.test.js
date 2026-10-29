@@ -36,6 +36,7 @@ test('names the missing login fields and which entry has them', () => {
 test('loads settings with defaults', () => {
   const settings = loadSettings({ BACKEND_URL: 'http://backend:8000', INGEST_TOKEN: 't' });
   assert.equal(settings.daysBack, 30);
+  assert.equal(settings.firstMonthsBack, 48);
   assert.equal(settings.scrapeTime, '03:00');
   assert.equal(settings.saveRaw, false);
   assert.equal(settings.accountsFile, 'config/accounts.json');

@@ -80,9 +80,9 @@ export function loadSettings(env = process.env, { requireIngest = true } = {}) {
     throw new Error('SCRAPER_DAYS_BACK must be a positive integer');
   }
 
-  const firstDaysBack = Number(env.SCRAPER_FIRST_DAYS_BACK ?? 365);
-  if (!Number.isInteger(firstDaysBack) || firstDaysBack < 1) {
-    throw new Error('SCRAPER_FIRST_DAYS_BACK must be a positive integer');
+  const firstMonthsBack = Number(env.SCRAPER_FIRST_MONTHS_BACK ?? 48);
+  if (!Number.isInteger(firstMonthsBack) || firstMonthsBack < 1) {
+    throw new Error('SCRAPER_FIRST_MONTHS_BACK must be a positive integer');
   }
   const apiPort = Number(env.SCRAPER_API_PORT ?? 8080);
   if (!Number.isInteger(apiPort) || apiPort < 1 || apiPort > 65535) {
@@ -109,8 +109,10 @@ export function loadSettings(env = process.env, { requireIngest = true } = {}) {
     ingestToken,
     apiPort,
     daysBack,
-    // How far back the first sync of a newly added login goes, so the history fills in
-    firstDaysBack,
+    // How far back the first sync of a newly added login goes, so the history fills in. Each
+    // site still caps it: israeli-bank-scrapers goes back 4 years at Max, 3 at Leumi, 18 months
+    // at Cal and a year at most others
+    firstMonthsBack,
     scrapeTime,
     executablePath: env.PUPPETEER_EXECUTABLE_PATH || undefined,
     saveRaw: env.SCRAPER_SAVE_RAW === 'true',

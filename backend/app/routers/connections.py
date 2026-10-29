@@ -132,7 +132,7 @@ def list_connections(settings: SettingsDep) -> Connections:
 
 @router.post("", status_code=201)
 def add_connection(body: ConnectionIn, settings: SettingsDep) -> Connection:
-    """Save a new login with the scraper, which syncs it (a year back) right away."""
+    """Save a new login with the scraper, which syncs it (up to 48 months back) right away."""
     return _connection(call_scraper(settings, "POST", "/accounts", body.model_dump()))
 
 

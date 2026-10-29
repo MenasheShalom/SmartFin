@@ -90,7 +90,7 @@ services:
       SCRAPE_TIME: ${SCRAPE_TIME:-03:00}
       SCRAPER_DAYS_BACK: ${SCRAPER_DAYS_BACK:-30}
       SCRAPER_ACCOUNTS_KEY: ${SCRAPER_ACCOUNTS_KEY:-}
-      SCRAPER_FIRST_DAYS_BACK: ${SCRAPER_FIRST_DAYS_BACK:-365}
+      SCRAPER_FIRST_MONTHS_BACK: ${SCRAPER_FIRST_MONTHS_BACK:-48}
     volumes:
       # accounts.json.enc: the logins added in the web app, encrypted
       - ./scraper/config:/app/config

@@ -72,8 +72,9 @@ You need Docker with Docker Compose on the machine that will run SmartFin.
 
 4. **Connect your banks and credit cards.** In הגדרות › חשבונות וסנכרון, tap
    "הוספת בנק או כרטיס אשראי", pick the bank or card company and enter the details you use on its
-   website. SmartFin logs in right away and fetches the last year, which can take a few minutes;
-   the list shows how it went. After that, every login syncs nightly at `SCRAPE_TIME` (03:00 by
+   website. SmartFin logs in right away and fetches up to 48 months back (as far as each site
+   allows: about 4 years at Max, 3 at Leumi, 18 months at Cal, a year at most others), which can
+   take a few minutes; the list shows how it went. After that, every login syncs nightly at `SCRAPE_TIME` (03:00 by
    default), and "סנכרון עכשיו" syncs on demand.
 
 5. **Sort the first transactions.** Open תנועות: each transaction waits for a category. With
@@ -300,7 +301,8 @@ internet, since GitHub's runners connect from changing addresses.
 
 The scraper logs into each account in turn every night at `SCRAPE_TIME` (Israel time) and
 fetches the last `SCRAPER_DAYS_BACK` days. A login just added in the app is synced right away,
-`SCRAPER_FIRST_DAYS_BACK` (365) days back, and "סנכרון עכשיו" queues every login; syncs run one
+`SCRAPER_FIRST_MONTHS_BACK` (48) months back, as far as each site allows, and "סנכרון עכשיו"
+queues every login; syncs run one
 at a time. If the machine was asleep at `SCRAPE_TIME` (a laptop, or Docker Desktop on Windows or
 macOS), the nightly run happens as soon as it wakes. It sends the results to the backend's
 `/internal/ingest` endpoint, authenticated with `INGEST_TOKEN`. The backend then:

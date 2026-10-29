@@ -18,11 +18,11 @@ const runs = [];
 before(async () => {
   const dir = await mkdtemp(path.join(tmpdir(), 'api-'));
   const store = new AccountStore({ file: path.join(dir, 'accounts.json'), keyFile: path.join(dir, 'key') });
-  const settings = { daysBack: 30, firstDaysBack: 365 };
+  const settings = { daysBack: 30, firstMonthsBack: 48 };
   // A fake run: the password "wrong" fails the way a bank would
   const run = async (accounts, runSettings, { onResult }) => {
     for (const account of accounts) {
-      runs.push({ company: account.company, daysBack: runSettings.daysBack });
+      runs.push({ company: account.company, daysBack: runSettings.daysBack, monthsBack: runSettings.monthsBack });
       const ok = account.credentials.password !== 'wrong';
       onResult(account, { success: ok, error_type: ok ? null : 'INVALID_PASSWORD', finished_at: 'now' });
     }
@@ -59,7 +59,7 @@ test('lists the supported companies and their login fields', async () => {
   assert.ok(!companies.some((c) => c.id === 'oneZero'));
 });
 
-test('adding a login syncs it a year back, and nothing returned holds a credential', async () => {
+test('adding a login syncs it 48 months back, and nothing returned holds a credential', async () => {
   const response = await call('POST', '/accounts', {
     company: 'leumi',
     credentials: { username: 'me123456', password: 'secret-pw' },
@@ -70,7 +70,7 @@ test('adding a login syncs it a year back, and nothing returned holds a credenti
   const added = JSON.parse(text);
   assert.equal(added.hint, '•••456');
   await queue.idle;
-  assert.deepEqual(runs.at(-1), { company: 'leumi', daysBack: 365 });
+  assert.deepEqual(runs.at(-1), { company: 'leumi', daysBack: 30, monthsBack: 48 });
 
   const after = await listed(added.id);
   assert.deepEqual(after.last_sync, { ok: true, error_type: null, finished_at: 'now' });
@@ -88,7 +88,7 @@ test('a wrong password shows on the login, and fixing it syncs again', async () 
   assert.equal(updated.status, 200);
   await queue.idle;
   assert.equal((await listed(added.id)).last_sync.ok, true);
-  assert.deepEqual(runs.at(-1), { company: 'max', daysBack: 30 });
+  assert.deepEqual(runs.at(-1), { company: 'max', daysBack: 30, monthsBack: undefined });
 });
 
 test('sync now runs every login', async () => {

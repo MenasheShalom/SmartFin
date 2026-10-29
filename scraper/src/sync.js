@@ -56,7 +56,7 @@ export class SyncQueue {
         }
         if (!account) continue; // removed while it waited
         this.current = id;
-        const settings = firstSync ? { ...this.settings, daysBack: this.settings.firstDaysBack } : this.settings;
+        const settings = firstSync ? { ...this.settings, monthsBack: this.settings.firstMonthsBack } : this.settings;
         try {
           await this.run([account], settings, {
             log: this.log,
