@@ -102,8 +102,9 @@ async function callBroker(page, template, moduleName, fields) {
   return parseBrokerReply(moduleName, text);
 }
 
+// "תשלום 2 מתוך 6", "3 מ-10", or Leumi's own "עסקה בתשלומים תשלום - 1 מ - 8."
 export function parseInstallments(text) {
-  const match = /(\d+)\s*מ(?:תוך|-)?\s*(\d+)/.exec(text ?? '');
+  const match = /(\d+)\s*מ(?:תוך)?\s*-?\s*(\d+)/.exec(text ?? '');
   if (!match) return undefined;
   const [number, total] = [Number(match[1]), Number(match[2])];
   return number >= 1 && number <= total ? { number, total } : undefined;
