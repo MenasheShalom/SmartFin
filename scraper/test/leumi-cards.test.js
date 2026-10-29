@@ -78,6 +78,9 @@ test('replies are unwrapped and refusals raise', () => {
 test('installments are read from the deal text and dated like israeli-bank-scrapers', () => {
   assert.deepEqual(parseInstallments('תשלום 2 מתוך 6'), { number: 2, total: 6 });
   assert.deepEqual(parseInstallments('3 מ-10'), { number: 3, total: 10 });
+  // How Leumi writes it
+  assert.deepEqual(parseInstallments('עסקה בתשלומים תשלום - 1 מ - 8.'), { number: 1, total: 8 });
+  assert.deepEqual(parseInstallments('עסקה בתשלומים תשלום - 2 מ - 2.'), { number: 2, total: 2 });
   assert.equal(parseInstallments(''), undefined);
   assert.equal(parseInstallments(null), undefined);
   assert.equal(parseInstallments('7 מתוך 6'), undefined);
@@ -87,7 +90,10 @@ test('installments are read from the deal text and dated like israeli-bank-scrap
   // Across the end of summer time the local day stays the same
   assert.equal(shiftMonths('2026-09-14T21:00:00.000Z', 2), '2026-11-15T00:00:00');
 
-  const charge = chargeFromItem(item({ AmountDouble: 600, NextPaymentAmountDouble: 100, DealDescription: 'תשלום 2 מתוך 6' }), '2026-11-02T00:00:00');
+  const charge = chargeFromItem(
+    item({ AmountDouble: 600, NextPaymentAmountDouble: 100, DealDescription: 'עסקה בתשלומים תשלום - 2 מ - 6.' }),
+    '2026-11-02T00:00:00',
+  );
   assert.equal(charge.type, 'installments');
   assert.deepEqual(charge.installments, { number: 2, total: 6 });
   assert.equal(charge.date, '2026-10-15T00:00:00');
