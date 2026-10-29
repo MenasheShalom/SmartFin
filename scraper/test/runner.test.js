@@ -82,6 +82,19 @@ test('Leumi cards are ingested as their own institution; the login status follow
   assert.deepEqual(statuses, [true]);
 });
 
+test('a first sync goes back whole months; a regular one, days', async () => {
+  const starts = [];
+  const now = () => new Date('2026-10-29T03:00:00Z');
+  const scrape = async (_account, _settings, startDate) => {
+    starts.push(startDate.toISOString().slice(0, 10));
+    return ok;
+  };
+  const ingest = async () => ({ added: 0, duplicates: 0, pending_skipped: 0 });
+  await runAll([accounts[0]], { ...settings, monthsBack: 48 }, { scrape, ingest, now, log: quiet });
+  await runAll([accounts[0]], settings, { scrape, ingest, now, log: quiet });
+  assert.deepEqual(starts, ['2022-10-29', '2026-09-29']);
+});
+
 test('a backend error is reported but does not stop the run', async () => {
   let calls = 0;
   const result = await runAll(accounts, settings, {

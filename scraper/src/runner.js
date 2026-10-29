@@ -70,7 +70,8 @@ export async function runAll(accounts, settings, {
   onResult = () => {},
 } = {}) {
   const startDate = now();
-  startDate.setDate(startDate.getDate() - settings.daysBack);
+  if (settings.monthsBack) startDate.setMonth(startDate.getMonth() - settings.monthsBack);
+  else startDate.setDate(startDate.getDate() - settings.daysBack);
   let allOk = true;
 
   // Log, save and ingest one company's result; true when it scraped and ingested cleanly
