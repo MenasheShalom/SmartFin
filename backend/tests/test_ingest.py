@@ -1,6 +1,7 @@
-from datetime import date
+from datetime import date, timedelta
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
@@ -8,8 +9,10 @@ from app.main import app
 from app.models import (
     Account,
     AccountType,
+    Alert,
     CategorizationRule,
     Category,
+    CategoryKind,
     ScrapeRun,
     ScrapeStatus,
     Transaction,
@@ -174,3 +177,129 @@ def test_rules_categorize_new_transactions_and_memo_is_kept(client, session):
     ]
     assert rows[1].memo == "שכר דירה ספטמבר"
     assert not any(t.category_manual for t in rows)
+
+
+def bank_bill(identifier, day, amount, description):
+    """A bank line on an Israeli day (the scrapers report Israel midnight in UTC)."""
+    previous = date.fromisoformat(day) - timedelta(days=1)
+    return txn(
+        identifier=identifier,
+        date=f"{previous.isoformat()}T21:00:00.000Z",
+        chargedAmount=amount,
+        originalAmount=amount,
+        description=description,
+    )
+
+
+def bank(txns, finished_at="2026-10-11T05:00:00Z"):
+    return result(
+        txns,
+        institution="leumi",
+        finished_at=finished_at,
+        accounts=[{"accountNumber": "12-345", "balance": 40000, "txns": txns}],
+    )
+
+
+def card(txns, institution="isracard", number="9805", finished_at="2026-10-11T05:00:00Z"):
+    return result(
+        txns,
+        institution=institution,
+        finished_at=finished_at,
+        accounts=[{"accountNumber": number, "balance": -500, "txns": txns}],
+    )
+
+
+def categories_by_description(session):
+    session.expire_all()
+    return {
+        t.description: t.category_id
+        for t in session.scalars(select(Transaction).order_by(Transaction.id))
+    }
+
+
+@pytest.fixture
+def transfers(session):
+    category = Category(name="העברות בין חשבונות", kind=CategoryKind.TRANSFER)
+    session.add(category)
+    session.commit()
+    return category.id
+
+
+def test_bill_for_a_synced_card_is_a_transfer(client, session, transfers):
+    post(client, card([txn(identifier=1, description="שופרסל", date="2026-08-20T21:00:00.000Z")]))
+    post(
+        client,
+        bank(
+            [
+                bank_bill(1, "2026-09-02", -7935.69, 'ישראכרט בע"מ-י'),
+                # Cal isn't synced, so its bill is the only record of that spending
+                bank_bill(2, "2026-09-10", -812.40, "כאל"),
+                bank_bill(3, "2026-09-11", -2715, "נופית ישוב ק-י"),
+            ]
+        ),
+    )
+    assert categories_by_description(session) == {
+        "שופרסל": None,
+        'ישראכרט בע"מ-י': transfers,
+        "כאל": None,
+        "נופית ישוב ק-י": None,
+    }
+
+
+def test_bills_synced_before_the_card_are_fixed_when_it_syncs(client, session, transfers):
+    post(client, bank([bank_bill(1, "2026-09-10", -5384.88, "לאומי מאסטרקרד")]))
+    assert categories_by_description(session)["לאומי מאסטרקרד"] is None
+
+    post(
+        client,
+        card(
+            [txn(identifier=1, description="כפר חסידים", date="2026-08-15T21:00:00.000Z")],
+            institution="leumiCards",
+            number="8344",
+        ),
+    )
+    assert categories_by_description(session)["לאומי מאסטרקרד"] == transfers
+
+
+def test_card_bills_leave_hand_set_categories_alone(client, session, transfers):
+    post(client, card([txn(identifier=1, date="2026-08-20T21:00:00.000Z")]))
+    groceries = Category(name="סופר")
+    session.add(groceries)
+    session.flush()
+    session.add(
+        Transaction(
+            account_id=session.scalar(select(Account.id).where(Account.institution == "isracard")),
+            external_id="by-hand",
+            date=date(2026, 9, 2),
+            amount=Decimal("-100"),
+            description="ישראכרט",
+            raw_description="ישראכרט",
+            category_id=groceries.id,
+            category_manual=True,
+        )
+    )
+    session.commit()
+    post(client, bank([bank_bill(1, "2026-09-02", -7935.69, 'ישראכרט בע"מ-י')]))
+    found = categories_by_description(session)
+    assert found["ישראכרט"] == groceries.id
+    assert found['ישראכרט בע"מ-י'] == transfers
+
+
+def test_card_bill_is_not_a_large_charge(client, session, transfers):
+    app.dependency_overrides[get_settings] = lambda: Settings(
+        ingest_token=TOKEN, large_transaction_threshold=Decimal("1000")
+    )
+    client.post("/internal/ingest", json=card([txn(date="2026-08-20T21:00:00.000Z")]), headers=AUTH)
+    client.post(
+        "/internal/ingest",
+        json=bank(
+            [
+                bank_bill(1, "2026-09-02", -7935.69, 'ישראכרט בע"מ-י'),
+                bank_bill(2, "2026-09-03", -2715, "נופית ישוב ק-י"),
+            ]
+        ),
+        headers=AUTH,
+    )
+    messages = [a.message for a in session.scalars(select(Alert))]
+    assert len(messages) == 1
+    assert "נופית" in messages[0]

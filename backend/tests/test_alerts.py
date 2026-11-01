@@ -79,7 +79,7 @@ def test_budget_alerts_at_each_level_once(client, session, channel, monkeypatch)
     configure()
     food = food_budget(session, 1000)
     # Every new transaction lands in Food
-    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None: food.id)
+    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None, **_: food.id)
 
     sync(client, result([txn(identifier=1, chargedAmount=-500)]))
     assert alerts(session) == []
@@ -99,7 +99,7 @@ def test_budget_alerts_at_each_level_once(client, session, channel, monkeypatch)
 def test_jumping_past_100_skips_the_warning_for_good(client, session, channel, monkeypatch):
     configure()
     food = food_budget(session, 100)
-    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None: food.id)
+    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None, **_: food.id)
 
     sync(client, result([txn(identifier=1, chargedAmount=-150)]))
     # A refund brings it back to 90%: still no 80% warning after the over-budget alert
@@ -283,7 +283,7 @@ def test_fixed_bills_never_raise_budget_alerts(client, session, channel, monkeyp
     session.flush()
     session.add(Budget(category_id=rent.id, month=date(2026, 9, 1), limit_amount=Decimal(5000)))
     session.commit()
-    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None: rent.id)
+    monkeypatch.setattr("app.ingest.Categorizer.category_for", lambda self, d, m=None, **_: rent.id)
 
     sync(client, result([txn(identifier=1, chargedAmount=-5000)]))
     assert alerts(session) == []

@@ -79,8 +79,9 @@ You need Docker with Docker Compose on the machine that will run SmartFin.
 
 5. **Sort the first transactions.** Open תנועות: each transaction waits for a category. With
    "remember for next time" ticked, the next ones from the same place are filed automatically.
-   Most important: mark the monthly credit-card bill paid from your bank account as
-   **העברות בין חשבונות**, or every card purchase counts twice.
+   The monthly bill for a card SmartFin also syncs is filed as **העברות בין חשבונות** on its
+   own (see [Card bills](#card-bills)); a bill for a card you haven't connected stays as
+   spending, since it's the only record of it.
 
 6. **Check the plan.** In תוכנית, see that the fixed bills (rent, insurance, subscriptions) look
    right and set a savings goal. Expected income is the average of the last three months unless
@@ -367,12 +368,29 @@ For each month:
 Income and transfers never count as spending. Uncategorized transactions are left out of the
 plan, and the app says how much is waiting to be sorted.
 
+### Card bills
+
+A card's purchases come in from the card, and the bank shows one charge a month that pays for
+them ("ישראכרט", "לאומי מאסטרקרד"). Counting both would count that spending twice, so when the
+bank charge pays a card SmartFin syncs, it's filed under the first transfers category
+(העברות בין חשבונות) on its own, and only the card's purchases count. This happens on every
+sync, for new and older bank lines alike.
+
+- A bill for a card that isn't connected stays as spending: it's the only record of it.
+- A card counts as synced for bills dated from its first transaction to its last sync, so
+  removing a card's login makes its later bills count as spending again.
+- Card companies are recognised by how their bills read in the bank: Isracard (ישראכרט), Amex
+  (אמריקן אקספרס), Cal (כאל), Max (מקס איט, לאומי קארד) and Leumi's own cards (לאומי ויזה,
+  לאומי מאסטרקרד). Two cards from the same company can't be told apart by the bill, so they
+  count as synced if either is.
+- Setting a category by hand always wins, as with rules.
+
 ### History
 
 Income and expenses per month come from categorized transactions, and from ones not sorted yet by
 their direction: money out of any account is an expense, money into a card is a refund (it
-reduces expenses), and money into a bank account is income. A card bill paid from the bank counts
-twice until it is filed as a transfer. The end-of-month balance is the
+reduces expenses), and money into a bank account is income. Bills for synced cards are already
+transfers (see [Card bills](#card-bills)). The end-of-month balance is the
 total of your bank accounts: the balance snapshot from that month where there is one, otherwise
 worked back from today's balance through the transactions since. Months before an account's data
 starts show no balance rather than a wrong one.
@@ -424,9 +442,8 @@ The API lives under `/api`. Interactive docs are at http://localhost:8000/docs.
 
 **Categories** have two levels (Food › Groceries) and a kind: `expense`, `income` or
 `transfer`. A starter set is created on first start; rename, add or delete freely. Mark
-money moving between your own accounts as a **transfer**, most importantly the monthly card bill
-paid from your bank account. Otherwise every card purchase counts twice: once on the card
-and again inside the bill.
+money moving between your own accounts as a **transfer**. Bills for synced cards are filed
+as transfers on their own (see [Card bills](#card-bills)).
 
 **Rules** file transactions into categories as they arrive. A plain pattern matches anywhere
 in the description or memo, ignoring case and extra spaces; set `is_regex` for a regular
