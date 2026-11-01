@@ -16,7 +16,8 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 - **שבועי (weekly):** day-to-day spending week by week (Sunday to Saturday) against a weekly
   allowance.
 - **היסטוריה (history):** income, expenses and end-of-month bank balance for every month, with a
-  chart you can page or swipe through.
+  chart you can page or swipe through, and a pie of the selected month's spending by category
+  (tap a category to see its subcategories).
 - **תנועות (transactions):** a queue of transactions waiting for a category, one tap each, with
   "remember for next time"; and a searchable list of everything.
 - **תוכנית (plan):** expected income, fixed bills, a savings goal, and what that leaves for

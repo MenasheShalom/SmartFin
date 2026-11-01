@@ -2,6 +2,7 @@ import { useEffect, useState, type KeyboardEvent } from "react";
 
 import { useHistory } from "../api/queries";
 import type { MonthHistory } from "../api/types";
+import { CategorySpending } from "../components/CategoryPie";
 import { HistoryChart } from "../components/HistoryChart";
 import { ChevronLeft, ChevronRight } from "../components/Icons";
 import { Money } from "../components/Money";
@@ -60,7 +61,7 @@ export function HistoryScreen() {
     <main className="screen">
       <header>
         <h1 className="screen-title">היסטוריה</h1>
-        <p className="screen-subtitle">הכנסות, הוצאות ויתרה חודש אחר חודש</p>
+        <p className="screen-subtitle">הכנסות, הוצאות ויתרה חודש אחר חודש, ולאן הלך הכסף</p>
       </header>
 
       {history.isPending && <Loading rows={2} />}
@@ -106,6 +107,7 @@ export function HistoryScreen() {
             )}
           </section>
           <MonthDetails month={months[sel]} />
+          <CategorySpending month={months[sel].month} />
         </>
       )}
     </main>

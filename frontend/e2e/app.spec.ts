@@ -265,3 +265,14 @@ test("a bank can be connected, fails to log in, and is disconnected", async ({ p
   await sheet.getByRole("button", { name: "ניתוק" }).click();
   await expect(row).toBeHidden();
 });
+
+test("history splits the selected month's spending by category", async ({ page }) => {
+  await login(page);
+  await page.goto("/history");
+  const card = page.locator("section", { has: page.getByRole("heading", { name: "לאן הלך הכסף" }) });
+  await expect(card.getByRole("img", { name: /לפי קטגוריה/ })).toBeVisible();
+  const first = card.locator(".pie-list button").first();
+  await first.click();
+  await expect(first).toHaveAttribute("aria-expanded", "true");
+  await expect(card.locator(".pie-sublist li").first()).toBeVisible();
+});
