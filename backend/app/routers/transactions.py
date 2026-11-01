@@ -146,7 +146,7 @@ def update_transaction(
         if body.create_rule:
             raise HTTPException(422, "create_rule needs a category_id")
         txn.category_manual = False
-        txn.category_id = Categorizer.load(session).category_for(txn.raw_description, txn.memo)
+        txn.category_id = Categorizer.load(session).category_of(txn)
     else:
         existing_category(session, body.category_id)
         txn.category_id = body.category_id

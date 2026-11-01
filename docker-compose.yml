@@ -49,8 +49,9 @@ services:
       timeout: 5s
       retries: 3
 
-  # Optional (docker compose --profile mcp up -d): lets Claude read your data, e.g. from the
-  # Claude phone app. Read-only, behind your SmartFin phone number and password. Claude's servers
+  # Optional (docker compose --profile mcp up -d): lets Claude read your data and categorize
+  # transactions, e.g. from the Claude phone app, behind your SmartFin phone number and
+  # password. It can't delete anything. Claude's servers
   # must reach it over HTTPS, so publish it with Tailscale Funnel or a Cloudflare Tunnel (see
   # the README); only this service is exposed, not the web app.
   mcp:

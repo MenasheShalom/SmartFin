@@ -10,7 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.categorize import Categorizer
+from app.categorize import Categorizer, apply_rules
 from app.models import (
     Account,
     AccountType,
@@ -190,21 +190,27 @@ def ingest(
                 summary.duplicates += 1
                 continue
             memo = clean_description(txn.memo or "") or None
+            day = local_date(txn.date, tz)
             added.append(
                 Transaction(
                     account_id=account.id,
                     external_id=external_id,
-                    date=local_date(txn.date, tz),
+                    date=day,
                     amount=txn.charged_amount.quantize(CENT),
                     currency=txn.charged_currency or "ILS",
                     description=clean_description(txn.description),
                     raw_description=txn.description,
                     memo=memo,
-                    category_id=categorizer.category_for(txn.description, memo),
+                    category_id=categorizer.category_for(
+                        txn.description, memo, account_type=account.account_type, day=day
+                    ),
                 )
             )
 
     session.add_all(added)
+    # This sync can change which bank lines are bills for a synced card (a card's first sync
+    # brings its history), so check the older ones again too.
+    apply_rules(session)
     summary.added = len(added)
     run.status = ScrapeStatus.SUCCESS
     run.transactions_added = summary.added

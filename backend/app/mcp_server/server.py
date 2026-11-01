@@ -40,6 +40,8 @@ Amounts are in ILS (₪). On transactions, negative amounts are money out and po
 Category and account names are in Hebrew; answer in the user's language.
 Categories have a kind: expense (fixed bills or day-to-day spending), income, or transfer (money
 between the user's own accounts, such as paying the card bill from the bank; never spending).
+A bank charge that pays a card SmartFin also syncs is filed as a transfer automatically, since
+the card's own purchases are already counted; don't move those to an expense category.
 Uncategorized transactions are left out of the cash-flow and budget numbers and counted separately.
 Weeks run Sunday to Saturday. Months are written YYYY-MM. Start with get_cash_flow for questions
 about this month, and get_history for trends.
@@ -366,7 +368,7 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
                 categorizer = Categorizer.load(session)
                 for txn in txns:
                     txn.category_manual = False
-                    txn.category_id = categorizer.category_for(txn.raw_description, txn.memo)
+                    txn.category_id = categorizer.category_of(txn)
             else:
                 known_category(session, category_id)
                 for txn in txns:

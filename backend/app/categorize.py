@@ -1,18 +1,46 @@
-"""Rule-based categorization: the first matching rule decides a transaction's category.
+"""Automatic categorization: card bills first, then the first matching rule.
+
+Card bills: a bank-account transaction that pays a credit card SmartFin also syncs ("ישראכרט",
+"לאומי מאסטרקרד") is filed under the transfers category, because the card's own purchases are
+already counted; counting the bill too would count that spending twice. A bill for a card that
+isn't synced stays with the rules, since it is the only record of that spending. A card counts as
+synced for bills dated from its first transaction to its last sync.
 
 Rules are tried by priority (highest first), then longest pattern first so a specific rule
 ("PAYPAL *SPOTIFY") beats a broad one ("PAYPAL"), then oldest first. Plain patterns match
 anywhere in the text, ignoring case and extra spaces; regex patterns ignore case.
+
+A category set by hand is never changed by any of this.
 """
 
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
+from datetime import date, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import CategorizationRule, Transaction
+from app.models import (
+    Account,
+    AccountType,
+    CategorizationRule,
+    Category,
+    CategoryKind,
+    Transaction,
+)
+
+# How each card company's bill reads in a bank account, by the scraper's institution id
+CARD_BILL_PATTERNS = {
+    "isracard": r"ישראכרט",
+    "amex": r"אמריקן\s*אקספרס|\bamex\b",
+    "visaCal": r"\bכאל\b|כ\.א\.ל",
+    "max": r"מקס\s*איט|לאומי\s*קארד|\bmax\s*it\b",
+    "leumiCards": r"לאומי\s*(ויזה|מאסטרקרד|מסטרקרד)",
+}
+
+# The bank's dates are Israel dates and the sync time is UTC: allow for the midnight gap
+SYNC_DAY_SLACK = timedelta(days=1)
 
 
 def normalize(text: str) -> str:
@@ -46,8 +74,63 @@ class CompiledRule:
         return self.needle in folded
 
 
+@dataclass(frozen=True)
+class SyncedCard:
+    """A card company whose transactions SmartFin has, from `first` to `last_synced`."""
+
+    bill: re.Pattern[str]
+    first: date
+    last_synced: date
+
+    def paid_by(self, text: str, day: date) -> bool:
+        return self.first <= day <= self.last_synced + SYNC_DAY_SLACK and bool(
+            self.bill.search(text)
+        )
+
+
+class CardBills:
+    def __init__(self, category_id: int | None, cards: Iterable[SyncedCard]):
+        # Where card bills are filed; None (no transfers category) turns this off
+        self.category_id = category_id
+        self.cards = list(cards)
+
+    @classmethod
+    def load(cls, session: Session) -> "CardBills":
+        category_id = session.scalar(
+            select(Category.id)
+            .where(Category.kind == CategoryKind.TRANSFER)
+            .order_by(Category.parent_id.is_not(None), Category.id)
+            .limit(1)
+        )
+        first_txn, last_synced = func.min(Transaction.date), func.max(Account.last_synced_at)
+        coverage = session.execute(
+            select(Account.institution, first_txn, last_synced)
+            .join(Transaction, Transaction.account_id == Account.id)
+            .where(Account.account_type == AccountType.CREDIT_CARD)
+            .group_by(Account.institution)
+        )
+        cards = [
+            SyncedCard(
+                re.compile(CARD_BILL_PATTERNS[institution], re.IGNORECASE), first, synced.date()
+            )
+            for institution, first, synced in coverage
+            if institution in CARD_BILL_PATTERNS and synced is not None
+        ]
+        return cls(category_id, cards)
+
+    def category_for(self, text: str, day: date) -> int | None:
+        if self.category_id is not None and any(card.paid_by(text, day) for card in self.cards):
+            return self.category_id
+        return None
+
+
 class Categorizer:
-    def __init__(self, rules: Iterable[CategorizationRule]):
+    def __init__(
+        self,
+        rules: Iterable[CategorizationRule],
+        card_bills: CardBills | None = None,
+        account_types: dict[int, AccountType] | None = None,
+    ):
         self.rules = [
             CompiledRule(
                 category_id=rule.category_id,
@@ -56,30 +139,58 @@ class Categorizer:
             )
             for rule in sorted(rules, key=rule_order)
         ]
+        self.card_bills = card_bills
+        self.account_types = account_types or {}
 
     @classmethod
     def load(cls, session: Session) -> "Categorizer":
-        return cls(session.scalars(select(CategorizationRule)))
+        return cls(
+            session.scalars(select(CategorizationRule)),
+            CardBills.load(session),
+            {id_: kind for id_, kind in session.execute(select(Account.id, Account.account_type))},
+        )
 
-    def category_for(self, description: str, memo: str | None = None) -> int | None:
+    def category_for(
+        self,
+        description: str,
+        memo: str | None = None,
+        *,
+        account_type: AccountType | None = None,
+        day: date | None = None,
+    ) -> int | None:
+        """Card bills need the account type and date; without them only the rules apply."""
         text = normalize(f"{description} {memo or ''}")
+        if self.card_bills and account_type == AccountType.BANK and day is not None:
+            card_bill = self.card_bills.category_for(text, day)
+            if card_bill is not None:
+                return card_bill
         folded = text.casefold()
         for rule in self.rules:
             if rule.matches(text, folded):
                 return rule.category_id
         return None
 
+    def category_of(self, txn: Transaction) -> int | None:
+        """For a stored transaction."""
+        return self.category_for(
+            txn.raw_description,
+            txn.memo,
+            account_type=self.account_types.get(txn.account_id),
+            day=txn.date,
+        )
+
 
 def apply_rules(session: Session) -> int:
-    """Re-run the rules over every transaction not categorized by hand.
+    """Re-categorize every transaction not categorized by hand: card bills, then the rules.
 
     Returns how many transactions changed category. The caller commits.
     """
+    session.flush()
     categorizer = Categorizer.load(session)
     changed = 0
     automatic = select(Transaction).where(Transaction.category_manual.is_(False))
     for txn in session.scalars(automatic):
-        category_id = categorizer.category_for(txn.raw_description, txn.memo)
+        category_id = categorizer.category_of(txn)
         if txn.category_id != category_id:
             txn.category_id = category_id
             changed += 1

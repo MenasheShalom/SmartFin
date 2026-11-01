@@ -81,7 +81,8 @@ def monthly_history(session: Session, today: date) -> list[MonthHistory]:
 
     # Not sorted yet: the totals shouldn't wait for that. Money out of any account is spending;
     # money into a card is a refund, which reduces it; money into a bank account is income.
-    # (A card bill paid from the bank counts twice until it is filed as a transfer.)
+    # (Bills for synced cards are filed as transfers automatically; an uncategorized bill for
+    # another card counts as spending, as it's the only record of it.)
     uncategorized = session.execute(
         select(Transaction.date, Transaction.amount, Account.account_type)
         .join(Account, Account.id == Transaction.account_id)
