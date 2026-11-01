@@ -17,7 +17,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
   allowance.
 - **היסטוריה (history):** income, expenses and end-of-month bank balance for every month, with a
   chart you can page or swipe through, and a pie of the selected month's spending by category
-  (tap a category to see its subcategories).
+  (tap a category to see its subcategories, and a subcategory to see its transactions).
 - **תנועות (transactions):** a queue of transactions waiting for a category, one tap each, with
   "remember for next time"; and a searchable list of everything.
 - **תוכנית (plan):** expected income, fixed bills, a savings goal, and what that leaves for

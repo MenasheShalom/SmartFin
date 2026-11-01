@@ -275,4 +275,10 @@ test("history splits the selected month's spending by category", async ({ page }
   await first.click();
   await expect(first).toHaveAttribute("aria-expanded", "true");
   await expect(card.locator(".pie-sublist li").first()).toBeVisible();
+
+  // A subcategory lists the month's transactions in it
+  const sub = card.locator(".pie-sub-main").first();
+  await sub.click();
+  await expect(sub).toHaveAttribute("aria-expanded", "true");
+  await expect(card.getByRole("list", { name: "תנועות" }).locator("li").first()).toBeVisible();
 });

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 
-import { useSpending } from "../api/queries";
+import { useSpending, useTransactions } from "../api/queries";
 import type { MonthSpending } from "../api/types";
-import { formatMoney, monthName, toNumber } from "../lib/format";
+import { formatMoney, formatShortDay, israelToday, monthName, toNumber } from "../lib/format";
 import { buildSlices, byAmount, donutSegment, shareLabel, sliceAngles, type Slice } from "../lib/pie";
 import { ChevronEnd } from "./Icons";
 import { Money } from "./Money";
@@ -90,6 +90,7 @@ function PieBody({ data }: { data: MonthSpending }) {
           {byAmount(slices).map((s) => (
             <PieRow
               key={s.id}
+              month={data.month}
               slice={s}
               open={active === s.id}
               highlighted={focus === s.id}
@@ -104,65 +105,116 @@ function PieBody({ data }: { data: MonthSpending }) {
   );
 }
 
+/** A line under an open category: a subcategory, a category inside "other", or the money filed
+ * on the category itself. Tapping it lists its transactions. */
+interface Detail {
+  id: number;
+  name: string;
+  total: string | number;
+  /** Only transactions filed on this category, not on its subcategories */
+  exact: boolean;
+}
+
+function details(slice: Slice): Detail[] {
+  // "Other" lists its categories
+  if (slice.categories.length > 1) {
+    return slice.categories.map((c) => ({ id: c.category_id, name: c.name, total: c.total, exact: false }));
+  }
+  const category = slice.categories[0];
+  if (category.subcategories.length === 0) return [];
+  const lines: Detail[] = category.subcategories.map((c) => ({ id: c.category_id, name: c.name, total: c.total, exact: false }));
+  // Money filed on the category itself, so the lines add up to the category
+  const direct = toNumber(category.total) - category.subcategories.reduce((sum, c) => sum + toNumber(c.total), 0);
+  if (direct >= 0.5) lines.push({ id: category.category_id, name: `${category.name} (כללי)`, total: direct, exact: true });
+  return lines;
+}
+
 function PieRow({
   slice,
+  month,
   open,
   highlighted,
   onToggle,
   onHover,
 }: {
   slice: Slice;
+  month: string;
   open: boolean;
   highlighted: boolean;
   onToggle: () => void;
   onHover: (on: boolean) => void;
 }) {
-  // "Other" lists its categories; a category lists its subcategories
-  const detail =
-    slice.categories.length > 1
-      ? slice.categories.map((c) => ({ id: c.category_id, name: c.name, total: c.total }))
-      : slice.categories[0].subcategories.map((c) => ({ id: c.category_id, name: c.name, total: c.total }));
-  const content = (
-    <>
-      <i className="swatch" style={{ background: `var(${slice.color})` }} aria-hidden="true" />
-      <span className="pie-row-name">{slice.name}</span>
-      <span className="muted pie-row-share">{shareLabel(slice.share)}</span>
-      <Money value={slice.value} decimals={0} className="pie-row-amount" />
-    </>
-  );
+  const detail = details(slice);
+  const [openDetail, setOpenDetail] = useState<string | null>(null);
+  const keyOf = (d: Detail) => `${d.id}${d.exact ? "-exact" : ""}`;
   return (
     <li className={highlighted ? "pie-row is-highlighted" : "pie-row"}>
-      {detail.length > 0 ? (
-        <button
-          type="button"
-          className="pie-row-main"
-          aria-expanded={open}
-          onClick={onToggle}
-          onPointerEnter={(e) => e.pointerType === "mouse" && onHover(true)}
-          onPointerLeave={() => onHover(false)}
-        >
-          {content}
-        </button>
-      ) : (
-        <div
-          className="pie-row-main"
-          onPointerEnter={(e) => e.pointerType === "mouse" && onHover(true)}
-          onPointerLeave={() => onHover(false)}
-        >
-          {content}
-        </div>
-      )}
-      {open && detail.length > 0 && (
-        <ul className="pie-sublist">
-          {detail.map((d) => (
-            <li key={d.id}>
-              <span>{d.name}</span>
-              <Money value={d.total} decimals={0} />
-            </li>
-          ))}
-        </ul>
-      )}
+      <button
+        type="button"
+        className="pie-row-main"
+        aria-expanded={open}
+        onClick={onToggle}
+        onPointerEnter={(e) => e.pointerType === "mouse" && onHover(true)}
+        onPointerLeave={() => onHover(false)}
+      >
+        <i className="swatch" style={{ background: `var(${slice.color})` }} aria-hidden="true" />
+        <span className="pie-row-name">{slice.name}</span>
+        <span className="muted pie-row-share">{shareLabel(slice.share)}</span>
+        <Money value={slice.value} decimals={0} className="pie-row-amount" />
+      </button>
+      {open &&
+        (detail.length > 0 ? (
+          <ul className="pie-sublist">
+            {detail.map((d) => {
+              const isOpen = openDetail === keyOf(d);
+              return (
+                <li key={keyOf(d)}>
+                  <button
+                    type="button"
+                    className="pie-sub-main"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpenDetail(isOpen ? null : keyOf(d))}
+                  >
+                    <span>{d.name}</span>
+                    <Money value={d.total} decimals={0} />
+                  </button>
+                  {isOpen && <CategoryTransactions month={month} categoryId={d.id} exact={d.exact} />}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          // No subcategories: the category's own transactions
+          <CategoryTransactions month={month} categoryId={slice.categories[0].category_id} exact={false} />
+        ))}
     </li>
+  );
+}
+
+/** The month's transactions in a category (and its subcategories unless exact), up to today,
+ * as the pie counts them */
+function CategoryTransactions({ month, categoryId, exact }: { month: string; categoryId: number; exact: boolean }) {
+  const txns = useTransactions({ month, category_id: categoryId, limit: 500 });
+  if (txns.isPending) return <p className="muted pie-txns-note">טוען…</p>;
+  if (txns.isError) return <ErrorState error={txns.error} onRetry={() => txns.refetch()} />;
+  const today = israelToday();
+  const rows = txns.data.filter((t) => t.date <= today && (!exact || t.category_id === categoryId));
+  if (rows.length === 0) return <p className="muted pie-txns-note">אין תנועות.</p>;
+  return (
+    <ul className="pie-txns" aria-label="תנועות">
+      {rows.map((t) => {
+        const amount = toNumber(t.amount);
+        return (
+          <li key={t.id}>
+            <span className="pie-txn-main">
+              <span className="pie-txn-title">{t.description}</span>
+              <span className="pie-txn-date">{formatShortDay(t.date)}</span>
+            </span>
+            <Money value={t.amount} decimals={2} className={amount > 0 ? "pos" : undefined} sign={amount > 0 ? "always" : "auto"} />
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

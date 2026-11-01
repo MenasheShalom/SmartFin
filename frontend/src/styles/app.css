@@ -1096,8 +1096,9 @@ a.list-row:active {
   font-size: 15px;
 }
 
-button.pie-row-main {
+.pie-row-main {
   cursor: pointer;
+  color: inherit;
 }
 
 .pie-row.is-highlighted .pie-row-main {
@@ -1128,11 +1129,69 @@ button.pie-row-main {
   color: var(--muted);
 }
 
-.pie-sublist li {
+.pie-sub-main {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 12px;
-  padding: 4px 0;
+  width: 100%;
+  min-height: 40px;
+  padding: 6px 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: start;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.pie-sub-main[aria-expanded="true"] {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.pie-txns {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 0;
+  border-inline-start: 2px solid var(--line);
+  padding-inline-start: 12px;
+}
+
+.pie-row-main + .pie-txns {
+  margin-inline: 26px 6px;
+}
+
+.pie-txns li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 0;
+  font-size: 14px;
+  color: var(--ink);
+}
+
+.pie-txn-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.pie-txn-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pie-txn-date {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.pie-txns-note {
+  font-size: 13px;
+  padding: 4px 0 8px;
 }
 
 .pie-note {
