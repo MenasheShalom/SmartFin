@@ -87,6 +87,28 @@ export interface MonthHistory {
   partial: boolean;
 }
 
+export interface SubcategorySpend {
+  category_id: number;
+  name: string;
+  total: Money;
+}
+
+export interface CategorySpend {
+  category_id: number;
+  name: string;
+  total: Money;
+  /** 0-6: a color that stays with the category from month to month; null: folded into "other" */
+  color_slot: number | null;
+  subcategories: SubcategorySpend[];
+}
+
+export interface MonthSpending {
+  month: string;
+  total: Money;
+  uncategorized: Money;
+  categories: CategorySpend[];
+}
+
 export interface Account {
   id: number;
   institution: string;

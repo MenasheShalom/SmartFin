@@ -11,6 +11,7 @@ from app.history import MonthHistory, monthly_history
 from app.models import MonthlyPlan
 from app.months import MONTH_PATTERN, format_month, get_today, parse_month
 from app.routers.common import SessionDep
+from app.spending import MonthSpending, month_spending
 
 router = APIRouter(prefix="/api", tags=["cash flow"])
 
@@ -64,3 +65,13 @@ def get_history(
 ) -> list[MonthHistory]:
     """Every month from the first stored transaction to now, oldest first."""
     return monthly_history(session, today)
+
+
+@router.get("/spending")
+def get_spending(
+    session: SessionDep,
+    today: Annotated[date, Depends(get_today)],
+    month: Annotated[str | None, Query(pattern=MONTH_PATTERN)] = None,
+) -> MonthSpending:
+    """The month's spending by top-level category, largest first. Defaults to the current month."""
+    return month_spending(session, parse_month(month) if month else today.replace(day=1), today)

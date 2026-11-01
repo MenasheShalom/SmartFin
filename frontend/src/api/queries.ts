@@ -11,6 +11,7 @@ import type {
   Connection,
   Connections,
   MonthHistory,
+  MonthSpending,
   Rule,
   SyncStatus,
   Transaction,
@@ -22,6 +23,7 @@ export const keys = {
   authStatus: ["auth-status"] as const,
   cashflow: (month: string) => ["cashflow", month] as const,
   history: ["history"] as const,
+  spending: (month: string) => ["spending", month] as const,
   categories: ["categories"] as const,
   rules: ["rules"] as const,
   accounts: ["accounts"] as const,
@@ -69,6 +71,9 @@ export const useCashFlow = (month: string) =>
 
 export const useHistory = () =>
   useQuery({ queryKey: keys.history, queryFn: () => api<MonthHistory[]>("/api/history") });
+
+export const useSpending = (month: string) =>
+  useQuery({ queryKey: keys.spending(month), queryFn: () => api<MonthSpending>(`/api/spending${query({ month })}`) });
 
 export const useCategories = () =>
   useQuery({
@@ -145,7 +150,7 @@ function useRefreshMoney() {
   const client = useQueryClient();
   return () =>
     Promise.all(
-      ["transactions", "cashflow", "history"].map((key) => client.invalidateQueries({ queryKey: [key] })),
+      ["transactions", "cashflow", "history", "spending"].map((key) => client.invalidateQueries({ queryKey: [key] })),
     );
 }
 
