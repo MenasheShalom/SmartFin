@@ -45,7 +45,7 @@ Screens: [design canvas](https://claude.ai/artifact/2dtCTS8E84pz3M2MhyQhAg)
 - [x] **Phase 5: The app.** Login, cash-flow plan, weekly view, history, categorizing, settings
 - [x] **Phase 6: Hardening.** Backups, encrypted bank logins, stalled-sync alerts, non-root image
 - [x] **Phase 7: Set up from the app.** Phone number and password, and bank and card logins, managed in the web app
-- [x] **Phase 8: Ask Claude.** A read-only MCP server, so Claude (including the phone app) can answer questions about your money
+- [x] **Phase 8: Ask Claude.** An MCP server, so Claude (including the phone app) can answer questions about your money and categorize transactions
 
 ## Setting it up
 
@@ -219,8 +219,10 @@ HTTP, but Tailscale encrypts the connection, and the login works there too.
 
 The optional `mcp` service is an [MCP](https://modelcontextprotocol.io) server, so you can ask
 Claude, for example in the Claude phone app, "how much is left for this week?", "what did I spend
-on food in September?" or "find the Wolt charges this month". It can only read: there is nothing
-in it that changes data, and on Postgres its queries run in read-only transactions.
+on food in September?" or "find the Wolt charges this month", or have it sort out your
+uncategorized transactions ("categorize this month's uncategorized charges"). The only things it
+can change are which category a transaction has and the categorization rules; it can't delete
+anything, and everything else runs in read-only transactions on Postgres.
 
 Claude connects from Anthropic's servers, not from your phone, so the MCP server needs a public
 HTTPS address. Only this service is published; the web app stays private. Connecting asks for
@@ -258,6 +260,18 @@ What Claude can see: the cash flow for any month, history, budgets, spending by 
 transactions (search by text, month, dates, category or account), categories, and accounts with
 balances and sync status. Account numbers are shown as their last four digits. Your answers
 go through Anthropic like any other Claude conversation.
+
+What Claude can change:
+
+| Tool | Does |
+|---|---|
+| `categorize_transactions` | Sets the category of up to 200 transactions by hand (rules then leave them alone), or hands them back to the rules. With `create_rule`, also adds a rule for each one's description and applies it. |
+| `add_rule` | Adds a rule (plain text or regex) and applies it to every transaction not categorized by hand. The same pattern again changes the existing rule. |
+| `list_rules` | Read-only: the rules in the order they're tried, so Claude can check before adding one. |
+
+Claude is told to show you its plan before changing many transactions or adding a broad rule.
+Deleting or editing rules stays in the web app. If Claude was already connected before these
+tools existed, it may need a moment, or reconnecting the connector, to see them.
 
 ## Backups
 

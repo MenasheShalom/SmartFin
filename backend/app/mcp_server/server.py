@@ -1,7 +1,10 @@
-"""SmartFin's MCP server: lets Claude read your cash flow, transactions, budgets and history.
+"""SmartFin's MCP server: lets Claude read your cash flow, transactions, budgets and history,
+and categorize transactions.
 
-Read-only: on Postgres every query runs in a read-only transaction, and there are no tools that
-change anything. Run it with  python -m app.mcp_server  (the "mcp" service in docker-compose).
+The reading tools run in read-only transactions on Postgres. The only tools that change anything
+are categorize_transactions and add_rule, and all they change is which category a transaction
+has and the categorization rules. Run it with  python -m app.mcp_server  (the "mcp" service in
+docker-compose).
 """
 
 from datetime import date
@@ -10,24 +13,26 @@ from typing import Annotated
 
 from mcp.server.auth.settings import AuthSettings, ClientRegistrationOptions, RevocationOptions
 from mcp.server.mcpserver import MCPServer
-from pydantic import BaseModel, Field
+from mcp.server.mcpserver.exceptions import ToolError
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import Engine, func, select
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.budgeting import BudgetSummary, money, summarize
 from app.cashflow import CashFlow, compute
+from app.categorize import Categorizer, apply_rules, check_pattern, normalize, rule_order
 from app.config import Settings
 from app.history import MonthHistory, monthly_history
 from app.labels import institution_label, masked
 from app.mcp_server.oauth import SCOPE, SmartFinOAuthProvider
-from app.models import Account, Category, CategoryKind, Transaction
+from app.models import Account, CategorizationRule, Category, CategoryKind, Transaction
 from app.months import MONTH_PATTERN, get_today, next_month, parse_month
 from app.routers.accounts import AccountOut, SyncStatus, list_accounts, sync_status
 from app.routers.categories import tree_order
-from app.routers.transactions import query_transactions
+from app.routers.transactions import learn_rule, query_transactions
 
 INSTRUCTIONS = """\
 SmartFin is the user's personal cash-flow app for their Israeli bank and credit-card accounts.
@@ -37,9 +42,20 @@ Categories have a kind: expense (fixed bills or day-to-day spending), income, or
 between the user's own accounts, such as paying the card bill from the bank; never spending).
 Uncategorized transactions are left out of the cash-flow and budget numbers and counted separately.
 Weeks run Sunday to Saturday. Months are written YYYY-MM. Start with get_cash_flow for questions
-about this month, and get_history for trends."""
+about this month, and get_history for trends.
+
+To categorize: find the transactions with search_transactions (uncategorized=true for the ones
+with no category), pick categories from list_categories, and set them with
+categorize_transactions. When a merchant will come back, also teach a rule (create_rule, or
+add_rule for a pattern that covers its variants, after checking list_rules) so future syncs
+categorize it on their own. Rules never change a category that was set by hand. Before changing
+many transactions or adding a broad rule, show the user what you plan unless they already told
+you to go ahead."""
 
 Month = Annotated[str | None, Field(pattern=MONTH_PATTERN, description="YYYY-MM; default: this month")]
+Pattern = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+# Changes a category or a rule, both of which can be changed back; never deletes anything
+WRITES = {"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True}
 
 
 class CategoryInfo(BaseModel):
@@ -75,6 +91,70 @@ class Accounts(BaseModel):
     sync: list[SyncStatus]
 
 
+class RuleInfo(BaseModel):
+    id: int
+    match_pattern: str
+    is_regex: bool
+    category_id: int
+    category: str
+    priority: int
+
+
+class CategorizedTransaction(BaseModel):
+    id: int
+    date: date
+    amount: Decimal
+    description: str
+    category: str | None
+    # Set by hand, so rules leave it alone; false once handed back to the rules
+    category_manual: bool
+
+
+class Categorized(BaseModel):
+    transactions: list[CategorizedTransaction]
+    # Rules added, or existing ones pointed at the new category (create_rule)
+    rules: list[RuleInfo]
+    # Other transactions those rules moved
+    recategorized: int
+
+
+class RuleSaved(BaseModel):
+    rule: RuleInfo
+    # True when a rule with the same pattern existed and was changed instead of adding another
+    replaced_existing: bool
+    # Transactions the rules moved (never ones categorized by hand)
+    recategorized: int
+
+
+def rule_info(session: Session, rule: CategorizationRule) -> RuleInfo:
+    return RuleInfo(
+        id=rule.id,
+        match_pattern=rule.match_pattern,
+        is_regex=rule.is_regex,
+        category_id=rule.category_id,
+        category=session.get(Category, rule.category_id).name,
+        priority=rule.priority,
+    )
+
+
+def known_category(session: Session, category_id: int) -> Category:
+    category = session.get(Category, category_id)
+    if category is None:
+        raise ToolError(f"No category with id {category_id}; see list_categories")
+    return category
+
+
+def same_rule(session: Session, pattern: str, is_regex: bool) -> CategorizationRule | None:
+    """A rule that already matches exactly what this pattern would."""
+    key = pattern if is_regex else normalize(pattern).casefold()
+    for rule in session.scalars(
+        select(CategorizationRule).where(CategorizationRule.is_regex.is_(is_regex))
+    ):
+        if (rule.match_pattern if is_regex else normalize(rule.match_pattern).casefold()) == key:
+            return rule
+    return None
+
+
 def build_server(engine: Engine, settings: Settings) -> MCPServer:
     if not settings.mcp_public_url:
         raise SystemExit("Set MCP_PUBLIC_URL to the HTTPS address Claude will reach this server at")
@@ -82,8 +162,9 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
     provider = SmartFinOAuthProvider(
         sessionmaker(bind=engine, expire_on_commit=False), public_url, settings.mcp_redirect_uri_list
     )
-    # The data tools can only read
+    # The reading tools can only read; only the categorizing tools use the writer
     reader = sessionmaker(bind=engine.execution_options(postgresql_readonly=True))
+    writer = sessionmaker(bind=engine, expire_on_commit=False)
 
     server = MCPServer(
         name="SmartFin",
@@ -237,6 +318,135 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
         """The bank and card accounts with their balances, and how each one's last sync went."""
         with reader() as session:
             return Accounts(accounts=list_accounts(session), sync=sync_status(session))
+
+    @server.tool(annotations={"readOnlyHint": True})
+    def list_rules() -> list[RuleInfo]:
+        """The categorization rules, in the order they're tried: higher priority first, then
+        the longer pattern. A plain pattern matches anywhere in a transaction's description or
+        memo, ignoring case and extra spaces; the first rule that matches decides the
+        category."""
+        with reader() as session:
+            rules = sorted(session.scalars(select(CategorizationRule)), key=rule_order)
+            return [rule_info(session, rule) for rule in rules]
+
+    @server.tool(annotations=WRITES)
+    def categorize_transactions(
+        transaction_ids: Annotated[
+            list[int], Field(min_length=1, max_length=200, description="From search_transactions")
+        ],
+        category_id: Annotated[
+            int | None,
+            Field(
+                description="From list_categories; null hands the transactions back to the rules"
+            ),
+        ],
+        create_rule: Annotated[
+            bool,
+            Field(
+                description="Also add a rule for each transaction's description, so other "
+                "transactions with that description, past and future, get this category"
+            ),
+        ] = False,
+    ) -> Categorized:
+        """Set the category of one or more transactions by hand. Rules won't change a category
+        set this way. All or nothing: if any id or the category doesn't exist, nothing
+        changes."""
+        ids = list(dict.fromkeys(transaction_ids))
+        with writer() as session:
+            txns = list(session.scalars(select(Transaction).where(Transaction.id.in_(ids))))
+            missing = sorted(set(ids) - {t.id for t in txns})
+            if missing:
+                raise ToolError(f"No transaction with id {', '.join(map(str, missing))}")
+            rules: dict[int, CategorizationRule] = {}
+            recategorized = 0
+
+            if category_id is None:
+                if create_rule:
+                    raise ToolError("create_rule needs a category_id")
+                categorizer = Categorizer.load(session)
+                for txn in txns:
+                    txn.category_manual = False
+                    txn.category_id = categorizer.category_for(txn.raw_description, txn.memo)
+            else:
+                known_category(session, category_id)
+                for txn in txns:
+                    txn.category_id = category_id
+                    txn.category_manual = True
+                if create_rule:
+                    for txn in txns:
+                        rule = learn_rule(session, txn.description, category_id)
+                        rules[rule.id] = rule
+                    recategorized = apply_rules(session)
+
+            session.commit()
+            names = {c.id: c.name for c in session.scalars(select(Category))}
+            by_id = {t.id: t for t in txns}
+            return Categorized(
+                transactions=[
+                    CategorizedTransaction(
+                        id=t.id,
+                        date=t.date,
+                        amount=money(t.amount),
+                        description=t.description,
+                        category=names.get(t.category_id) if t.category_id else None,
+                        category_manual=t.category_manual,
+                    )
+                    for t in (by_id[i] for i in ids)
+                ],
+                rules=[rule_info(session, r) for r in sorted(rules.values(), key=rule_order)],
+                recategorized=recategorized,
+            )
+
+    @server.tool(annotations=WRITES)
+    def add_rule(
+        match_pattern: Annotated[
+            Pattern,
+            Field(
+                description="Text to find in the description or memo, such as WOLT; for a "
+                "plain pattern, case and extra spaces don't matter"
+            ),
+        ],
+        category_id: Annotated[int, Field(description="From list_categories")],
+        is_regex: Annotated[
+            bool, Field(description="Treat the pattern as a regular expression")
+        ] = False,
+        priority: Annotated[
+            int | None,
+            Field(
+                ge=-1000,
+                le=1000,
+                description="Higher is tried first; ties go to the longer pattern. Default: 0, "
+                "or the existing rule's priority when one is changed",
+            ),
+        ] = None,
+    ) -> RuleSaved:
+        """Add a categorization rule and apply it now to every transaction not categorized by
+        hand; future syncs use it too. A rule with the same pattern is changed instead of
+        duplicated."""
+        try:
+            check_pattern(match_pattern, is_regex)
+        except ValueError as err:
+            raise ToolError(str(err)) from err
+        with writer() as session:
+            known_category(session, category_id)
+            rule = same_rule(session, match_pattern, is_regex)
+            replaced = rule is not None
+            if rule is None:
+                rule = CategorizationRule(
+                    match_pattern=match_pattern, is_regex=is_regex, priority=0
+                )
+                session.add(rule)
+            rule.category_id = category_id
+            if priority is not None:
+                rule.priority = priority
+            session.flush()
+            recategorized = apply_rules(session)
+            session.commit()
+            return RuleSaved(
+                rule=rule_info(session, rule),
+                replaced_existing=replaced,
+                recategorized=recategorized,
+            )
 
     server.custom_route("/login", methods=["GET", "POST"])(provider.login_page)
 

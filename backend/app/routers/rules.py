@@ -1,11 +1,10 @@
-import re
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from sqlalchemy import select
 
-from app.categorize import apply_rules, normalize, rule_order
+from app.categorize import apply_rules, check_pattern, rule_order
 from app.models import CategorizationRule
 from app.routers.common import SessionDep, existing_category, get_or_404
 
@@ -49,13 +48,10 @@ class RulesApplied(BaseModel):
 
 
 def validate_pattern(pattern: str, is_regex: bool) -> None:
-    if is_regex:
-        try:
-            re.compile(pattern)
-        except re.error as err:
-            raise HTTPException(422, f"Invalid regular expression: {err}") from err
-    elif not normalize(pattern):
-        raise HTTPException(422, "Pattern is blank")
+    try:
+        check_pattern(pattern, is_regex)
+    except ValueError as err:
+        raise HTTPException(422, str(err)) from err
 
 
 def saved(rule: CategorizationRule, recategorized: int) -> RuleSaved:
