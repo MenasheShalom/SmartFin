@@ -23,6 +23,17 @@ def rule_order(rule: CategorizationRule) -> tuple[int, int, int]:
     return (-rule.priority, -len(rule.match_pattern), rule.id)
 
 
+def check_pattern(pattern: str, is_regex: bool) -> None:
+    """Raise ValueError for a rule pattern that can't work."""
+    if is_regex:
+        try:
+            re.compile(pattern)
+        except re.error as err:
+            raise ValueError(f"Invalid regular expression: {err}") from err
+    elif not normalize(pattern):
+        raise ValueError("Pattern is blank")
+
+
 @dataclass(frozen=True)
 class CompiledRule:
     category_id: int
