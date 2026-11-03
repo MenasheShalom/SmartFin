@@ -147,6 +147,8 @@ export interface Connection {
   added_at: string | null;
   sync: "running" | "queued" | null;
   last_sync: { ok: boolean; error_type: string | null; finished_at: string | null } | null;
+  /** Set while the nightly sync waits to try a failed card again */
+  retry?: { attempt: number; of: number; at: string } | null;
 }
 
 export interface Connections {

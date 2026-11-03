@@ -3,11 +3,11 @@ import { useState } from "react";
 import { ApiError, errorMessage } from "../api/client";
 import { useConnectionMutations, useConnections } from "../api/queries";
 import type { Company, Connection } from "../api/types";
-import { ChevronEnd, PlusIcon, WarningIcon } from "../components/Icons";
+import { ChevronEnd, PlusIcon, SyncIcon, WarningIcon } from "../components/Icons";
 import { Sheet } from "../components/Sheet";
 import { Loading } from "../components/States";
 import { useToast } from "../components/Toast";
-import { formatSyncTime } from "../lib/format";
+import { formatClock, formatSyncTime } from "../lib/format";
 
 // israeli-bank-scrapers login field ids, as each site calls them
 const FIELD_LABELS: Record<string, string> = {
@@ -39,6 +39,12 @@ export function syncErrorText(errorType: string | null): string {
 function statusText(c: Connection): { text: string; failed?: boolean } {
   if (c.sync === "running") return { text: "מתחבר ומוריד תנועות…" };
   if (c.sync === "queued") return { text: "ממתין לסנכרון" };
+  if (c.retry) {
+    return {
+      text: `הסנכרון הלילי נכשל. ננסה שוב ב־${formatClock(c.retry.at)} (ניסיון ${c.retry.attempt} מתוך ${c.retry.of})`,
+      failed: true,
+    };
+  }
   if (c.last_sync && !c.last_sync.ok) return { text: syncErrorText(c.last_sync.error_type), failed: true };
   if (c.last_sync?.finished_at) return { text: `מחובר · עודכן ${formatSyncTime(c.last_sync.finished_at)}` };
   return { text: "מחובר" };
@@ -46,7 +52,7 @@ function statusText(c: Connection): { text: string; failed?: boolean } {
 
 export function ConnectionsSection() {
   const connections = useConnections();
-  const { syncAll } = useConnectionMutations();
+  const { syncAll, syncOne } = useConnectionMutations();
   const toast = useToast();
   const [editing, setEditing] = useState<Connection | "new" | null>(null);
 
@@ -103,23 +109,35 @@ export function ConnectionsSection() {
             {connections.data.connections.map((c) => {
               const status = statusText(c);
               return (
-                <button key={c.id} type="button" className="list-row" onClick={() => setEditing(c)}>
-                  <span className="list-row-main">
-                    <span className="list-row-title">
-                      {c.label}
-                      {c.hint && (
-                        <>
-                          {" "}
-                          <bdi dir="ltr" className="muted">
-                            {c.hint}
-                          </bdi>
-                        </>
-                      )}
+                <div key={c.id} className="list-row connection-row">
+                  <button type="button" className="connection-open" onClick={() => setEditing(c)}>
+                    <span className="list-row-main">
+                      <span className="list-row-title">
+                        {c.label}
+                        {c.hint && (
+                          <>
+                            {" "}
+                            <bdi dir="ltr" className="muted">
+                              {c.hint}
+                            </bdi>
+                          </>
+                        )}
+                      </span>
+                      <span className={`list-row-sub${status.failed ? " neg" : ""}`}>{status.text}</span>
                     </span>
-                    <span className={`list-row-sub${status.failed ? " neg" : ""}`}>{status.text}</span>
-                  </span>
-                  <ChevronEnd size={18} />
-                </button>
+                  </button>
+                  <button
+                    type="button"
+                    className={`icon-button icon-button--outline connection-sync${c.sync === "running" ? " is-spinning" : ""}`}
+                    aria-label={`סנכרון ${c.label}${c.hint ? ` ${c.hint}` : ""}`}
+                    title="סנכרון עכשיו"
+                    disabled={c.sync !== null || (syncOne.isPending && syncOne.variables === c.id)}
+                    onClick={() => syncOne.mutate(c.id, { onError: (err) => toast(errorMessage(err)) })}
+                  >
+                    <SyncIcon size={18} />
+                  </button>
+                  <ChevronEnd size={18} className="connection-chevron" />
+                </div>
               );
             })}
             <button type="button" className="list-row" onClick={() => setEditing("new")}>

@@ -128,6 +128,11 @@ export function useConnectionMutations() {
       mutationFn: (id: string) => api(`/api/connections/${id}`, { method: "DELETE" }),
       onSuccess,
     }),
+    /** One login, with the credentials the scraper already has */
+    syncOne: useMutation({
+      mutationFn: (id: string) => api<Connection>(`/api/connections/${id}/sync`, { method: "POST" }),
+      onSuccess,
+    }),
     syncAll: useMutation({
       mutationFn: () => api<Connection[]>("/api/connections/sync", { method: "POST" }),
       onSuccess,

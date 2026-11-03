@@ -137,6 +137,11 @@ export function formatSyncTime(iso: string, now: Date = new Date()): string {
   return `${label} ב־${timeFormat.format(at)}`;
 }
 
+/** "03:20", Israel time */
+export function formatClock(iso: string): string {
+  return timeFormat.format(new Date(iso));
+}
+
 export function greeting(now: Date = new Date()): string {
   const hour = Number(
     new Intl.DateTimeFormat("en-US", { hour: "numeric", hour12: false, timeZone: "Asia/Jerusalem" }).format(now),

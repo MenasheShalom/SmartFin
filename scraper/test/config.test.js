@@ -59,3 +59,13 @@ test('masks account numbers to the last 4 digits', () => {
   assert.equal(maskAccountNumber('12-345-678901'), '…8901');
   assert.equal(maskAccountNumber('123'), '123');
 });
+
+test('nightly retries default to 10, 10 minutes apart, and are checked', () => {
+  const base = { BACKEND_URL: 'http://b', INGEST_TOKEN: 't' };
+  const settings = loadSettings(base);
+  assert.equal(settings.retries, 10);
+  assert.equal(settings.retryMinutes, 10);
+  assert.equal(loadSettings({ ...base, SCRAPER_RETRIES: '0' }).retries, 0);
+  assert.throws(() => loadSettings({ ...base, SCRAPER_RETRIES: '-1' }), /SCRAPER_RETRIES/);
+  assert.throws(() => loadSettings({ ...base, SCRAPER_RETRY_MINUTES: '0' }), /SCRAPER_RETRY_MINUTES/);
+});

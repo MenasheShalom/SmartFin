@@ -365,6 +365,81 @@ a.list-row:active {
   background: var(--surface-2);
 }
 
+/* A login: tap the row to edit it, or its own button to sync just that login */
+.connection-row {
+  position: relative;
+  padding-inline-end: 12px;
+}
+
+.connection-open {
+  /* Covers the whole row, so the row stays one big tap target; the sync button sits on top */
+  position: static;
+  display: flex;
+  flex-grow: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: start;
+  color: inherit;
+  cursor: pointer;
+}
+
+.connection-open::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.connection-open:focus-visible {
+  outline: none;
+}
+
+.connection-open:focus-visible::after {
+  outline: 3px solid var(--expense);
+  outline-offset: -3px;
+  border-radius: inherit;
+}
+
+.connection-row:active:not(:has(.connection-sync:active)) {
+  background: var(--surface-2);
+}
+
+.connection-sync {
+  position: relative;
+  z-index: 1;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+}
+
+.connection-sync.is-spinning svg {
+  animation: spin 1s linear infinite;
+}
+
+/* Disabled while it runs, but the spinning icon is the status: keep it clear */
+.connection-sync.is-spinning:disabled {
+  opacity: 1;
+  color: var(--expense);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connection-sync.is-spinning svg {
+    animation: none;
+  }
+}
+
+.connection-chevron {
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 .list-row-main {
   display: flex;
   flex-direction: column;

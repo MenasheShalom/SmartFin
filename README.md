@@ -323,9 +323,16 @@ internet, since GitHub's runners connect from changing addresses.
 
 The scraper logs into each account in turn every night at `SCRAPE_TIME` (Israel time) and
 fetches the last `SCRAPER_DAYS_BACK` days. A login just added in the app is synced right away,
-`SCRAPER_FIRST_MONTHS_BACK` (48) months back, as far as each site allows, and "סנכרון עכשיו"
-queues every login; syncs run one
-at a time. If the machine was asleep at `SCRAPE_TIME` (a laptop, or Docker Desktop on Windows or
+`SCRAPER_FIRST_MONTHS_BACK` (48) months back, as far as each site allows. "סנכרון עכשיו"
+queues every login, and the sync button on a login's row syncs just that one with its saved
+credentials; syncs run one at a time.
+
+When a credit card fails the nightly sync (Isracard, for one, often refuses a login at night),
+the scraper tries it again up to `SCRAPER_RETRIES` (10) times, `SCRAPER_RETRY_MINUTES` (10)
+minutes apart, after the other logins are done; a Leumi login is retried when its cards fail.
+A wrong or expired password, a blocked user or a bank is never retried. Only the last attempt's
+failure reaches the backend, so the failure alert comes only if the card never got through, and
+the app shows the next attempt on the login's row meanwhile. If the machine was asleep at `SCRAPE_TIME` (a laptop, or Docker Desktop on Windows or
 macOS), the nightly run happens as soon as it wakes. It sends the results to the backend's
 `/internal/ingest` endpoint, authenticated with `INGEST_TOKEN`. The backend then:
 

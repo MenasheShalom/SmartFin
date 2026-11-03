@@ -34,8 +34,7 @@ setInterval(async () => {
   const late = Date.now() - lastOccurrence(settings.scrapeTime).getTime() > 5 * 60_000;
   console.log(late ? 'Running the nightly scrape late (the machine was asleep)' : 'Nightly scrape');
   try {
-    await queue.enqueueAll();
-    await queue.idle;
+    await queue.runNightly();
   } catch (err) {
     console.error(`Nightly scrape failed: ${err.message}`);
   }

@@ -109,6 +109,14 @@ export const PlusIcon = (p: IconProps) => (
     <path d="M12 5v14M5 12h14" />
   </Icon>
 );
+export const SyncIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M21 12a9 9 0 0 1-15.5 6.2L3 15.5" />
+    <path d="M3 21v-5.5h5.5" />
+    <path d="M3 12a9 9 0 0 1 15.5-6.2L21 8.5" />
+    <path d="M21 3v5.5h-5.5" />
+  </Icon>
+);
 export const LogoMark = ({ size = 40 }: { size?: number }) => (
   <svg width={size} height={size} viewBox="0 0 48 48" aria-hidden="true" focusable="false">
     <rect width="48" height="48" rx="14" fill="#16244A" />
