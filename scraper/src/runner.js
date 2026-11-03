@@ -68,6 +68,11 @@ export async function runAll(accounts, settings, {
   now = () => new Date(),
   onStart = () => {},
   onResult = () => {},
+  // Every result, the login's own and its cards' (a Leumi login brings both)
+  onPart = () => {},
+  // A failure this returns true for is not sent to the backend: it will be retried, and only
+  // the last attempt's failure should reach the scrape log and raise an alert
+  withhold = () => false,
 } = {}) {
   const startDate = now();
   if (settings.monthsBack) startDate.setMonth(startDate.getMonth() - settings.monthsBack);
@@ -90,6 +95,10 @@ export async function runAll(accounts, settings, {
       log.log(`[${company}] raw result saved to ${await saveRaw(settings, company, result)}`);
     }
     if (dryRun) return ok;
+    if (!payload.success && withhold(company, payload)) {
+      log.log(`[${company}] will retry; not reporting this failure yet`);
+      return ok;
+    }
 
     try {
       const summary = await ingest(settings, payload);
@@ -122,6 +131,7 @@ export async function runAll(accounts, settings, {
     for (const [company, part] of parts) {
       const payload = toPayload(company, startedAt, finishedAt, part);
       if (!(await report(company, part, payload))) allOk = false;
+      onPart(account, company, payload);
       // The login's status follows its own result; a card failure is reported on its own run
       if (company === account.company) onResult(account, payload);
     }

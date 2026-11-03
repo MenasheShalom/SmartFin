@@ -42,6 +42,13 @@ class LastSync(BaseModel):
     finished_at: str | None
 
 
+class Retry(BaseModel):
+    # The nightly run failed to sync this card and will try again: attempt `attempt` of `of`
+    attempt: int
+    of: int
+    at: str
+
+
 class Connection(BaseModel):
     id: str
     company: str
@@ -53,6 +60,8 @@ class Connection(BaseModel):
     sync: Literal["running", "queued"] | None
     # How the latest sync since the scraper started went; None before the first
     last_sync: LastSync | None
+    # Set while the nightly run waits to try a failed card again
+    retry: Retry | None = None
 
 
 class Connections(BaseModel):

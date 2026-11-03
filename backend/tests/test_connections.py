@@ -22,6 +22,7 @@ ISRACARD = {
     "added_at": None,
     "sync": None,
     "last_sync": {"ok": False, "error_type": "INVALID_PASSWORD", "finished_at": "2026-09-30T03:01:00Z"},
+    "retry": {"attempt": 2, "of": 10, "at": "2026-09-30T03:21:00Z"},
 }
 
 
@@ -68,6 +69,8 @@ class FakeScraper(BaseHTTPRequestHandler):
             return self._reply(202, [LEUMI])
         if route == ("POST", "/accounts/file-0/sync"):
             return self._reply(500, {"detail": "Internal error"})
+        if route == ("POST", f"/accounts/{LEUMI['id']}/sync"):
+            return self._reply(202, {**LEUMI, "sync": "queued"})
         return self._reply(404, {"detail": "Not found"})
 
     do_GET = do_POST = do_PUT = do_DELETE = _handle
@@ -97,6 +100,8 @@ def test_lists_connections_and_companies_with_hebrew_names(api):
     assert [c["label"] for c in data["connections"]] == ["בנק לאומי", "ישראכרט"]
     assert [c["kind"] for c in data["connections"]] == ["bank", "card"]
     assert data["connections"][1]["last_sync"]["error_type"] == "INVALID_PASSWORD"
+    assert data["connections"][1]["retry"] == {"attempt": 2, "of": 10, "at": "2026-09-30T03:21:00Z"}
+    assert data["connections"][0]["retry"] is None
     isracard = next(c for c in data["companies"] if c["id"] == "isracard")
     assert isracard == {
         "id": "isracard",
@@ -152,3 +157,12 @@ def test_scraper_down(client):
 def test_no_token(client):
     app.dependency_overrides[get_settings] = lambda: Settings(ingest_token=None)
     assert client.get("/api/connections").status_code == 503
+
+
+def test_sync_one_login_with_its_saved_credentials(api):
+    response = api.post(f"/api/connections/{LEUMI['id']}/sync")
+    assert response.status_code == 202
+    assert response.json()["sync"] == "queued"
+    # Nothing but the id is sent: the scraper uses the login it already has
+    method, path, _, body = FakeScraper.requests[-1]
+    assert (method, path, body) == ("POST", f"/accounts/{LEUMI['id']}/sync", None)

@@ -94,6 +94,15 @@ export function loadSettings(env = process.env, { requireIngest = true } = {}) {
     throw new Error('SCRAPE_TIME must be HH:MM (24-hour)');
   }
 
+  const retries = Number(env.SCRAPER_RETRIES ?? 10);
+  if (!Number.isInteger(retries) || retries < 0 || retries > 50) {
+    throw new Error('SCRAPER_RETRIES must be a whole number from 0 to 50');
+  }
+  const retryMinutes = Number(env.SCRAPER_RETRY_MINUTES ?? 10);
+  if (!Number.isFinite(retryMinutes) || retryMinutes < 1 || retryMinutes > 120) {
+    throw new Error('SCRAPER_RETRY_MINUTES must be a number from 1 to 120');
+  }
+
   const backendUrl = env.BACKEND_URL;
   const ingestToken = env.INGEST_TOKEN;
   if (requireIngest && (!backendUrl || !ingestToken)) {
@@ -114,6 +123,9 @@ export function loadSettings(env = process.env, { requireIngest = true } = {}) {
     // at Cal and a year at most others
     firstMonthsBack,
     scrapeTime,
+    // The nightly run tries a card that failed this many more times, this many minutes apart
+    retries,
+    retryMinutes,
     executablePath: env.PUPPETEER_EXECUTABLE_PATH || undefined,
     saveRaw: env.SCRAPER_SAVE_RAW === 'true',
     outputDir: env.SCRAPER_OUTPUT_DIR || 'output',

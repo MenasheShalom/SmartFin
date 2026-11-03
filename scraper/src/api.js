@@ -42,6 +42,7 @@ export function createApi({ store, queue, token, log = console }) {
     ...publicAccount(account),
     sync: queue.state(account.id),
     last_sync: queue.results.get(account.id) ?? null,
+    retry: queue.retries.get(account.id) ?? null,
   });
 
   async function route(method, path, request) {
