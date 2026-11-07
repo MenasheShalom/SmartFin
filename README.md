@@ -376,6 +376,15 @@ For each month:
 Income never counts as spending. Uncategorized transactions are left out of the plan, and the
 app says how much is waiting to be sorted.
 
+### Transactions dated later in the month
+
+A month counts every transaction dated in it, also the ones dated after today: installments
+("תשלום 3 מתוך 4") and other charges the cards already list for later in the month. They show
+in the month's spending, its weeks, budgets, the pie and the history, and the home screen says
+how much of the month's numbers they are. The end-of-month forecast extrapolates only the pace
+up to today, and takes the charges already scheduled for the rest of the month as the least
+those days will cost, so they aren't counted twice. Bank balances stay as of today.
+
 ### Out of the cash flow
 
 Every transaction counts in the cash flow (spending, income, the plan, budgets, the pie and

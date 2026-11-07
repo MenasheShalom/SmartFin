@@ -66,6 +66,10 @@ class CashFlow(BaseModel):
     current_week_per_day: Decimal | None
     uncategorized_count: int
     uncategorized_net: Decimal
+    # Transactions dated after today but in this month (installments, for one): they count in
+    # the month's numbers above; this is how many there are and the money out among them
+    upcoming_count: int = 0
+    upcoming_out: Decimal = Decimal(0)
 
 
 def month_start_offset(start: date, months_back: int) -> date:
@@ -109,19 +113,22 @@ def compute(session: Session, start: date, today: date) -> CashFlow:
         i for i, c in categories.items() if c.kind == CategoryKind.EXPENSE and not c.is_fixed
     }
 
-    # This month, day by day
+    # This month, day by day: the whole month, including what's dated after today
     net: dict[int, Decimal] = defaultdict(Decimal)
     variable_by_day: dict[date, Decimal] = defaultdict(Decimal)
     uncategorized_count, uncategorized_net = 0, Decimal(0)
-    if through:
-        for day, category_id, total, count in daily_totals(session, start, through):
-            if category_id is None:
-                uncategorized_count += count
-                uncategorized_net += total
-                continue
-            net[category_id] += total
-            if category_id in variable_ids:
-                variable_by_day[day] -= total
+    upcoming_count, upcoming_out = 0, Decimal(0)
+    for day, category_id, total, count in daily_totals(session, start, last):
+        if day > today:
+            upcoming_count += count
+            upcoming_out -= min(total, Decimal(0))
+        if category_id is None:
+            uncategorized_count += count
+            uncategorized_net += total
+            continue
+        net[category_id] += total
+        if category_id in variable_ids:
+            variable_by_day[day] -= total
 
     # The previous months: last month's fixed bills and recent income
     history_start = month_start_offset(start, INCOME_HISTORY_MONTHS)
@@ -174,15 +181,17 @@ def compute(session: Session, start: date, today: date) -> CashFlow:
     variable_budget = money(expected_income - fixed_expected - savings)
     variable_spent = money(sum(variable_by_day.values(), Decimal(0)))
     plan_daily = max(variable_budget, Decimal(0)) / days
-    if through is None:
-        projected = max(variable_budget, Decimal(0))
-    elif through == last:
+    if through == last:
         projected = variable_spent
     else:
-        # Early in the month the plan says more than a few days of spending; later, the pace wins
-        pace = variable_spent / elapsed
+        # The rest of the month: early on the plan says more than a few days of spending, later
+        # the pace so far wins; and it's at least what's already scheduled for those days
+        spent_so_far = sum((v for d, v in variable_by_day.items() if d <= today), Decimal(0))
+        scheduled = variable_spent - spent_so_far
+        pace = spent_so_far / elapsed if elapsed else Decimal(0)
         weight = Decimal(elapsed) / days
-        projected = variable_spent + (days - elapsed) * (weight * pace + (1 - weight) * plan_daily)
+        expected_rest = (days - elapsed) * (weight * pace + (1 - weight) * plan_daily)
+        projected = spent_so_far + max(scheduled, expected_rest)
     projected = money(projected)
 
     weeks = []
@@ -230,4 +239,6 @@ def compute(session: Session, start: date, today: date) -> CashFlow:
         current_week_per_day=per_day,
         uncategorized_count=uncategorized_count,
         uncategorized_net=money(uncategorized_net),
+        upcoming_count=upcoming_count,
+        upcoming_out=money(upcoming_out),
     )

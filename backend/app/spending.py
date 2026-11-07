@@ -75,13 +75,15 @@ def _expense_totals(
 
 
 def month_spending(session: Session, first_day: date, today: date) -> MonthSpending:
-    last = min(next_month(first_day) - timedelta(days=1), today)
+    # The whole month, also what's dated after today (installments)
+    last = next_month(first_day) - timedelta(days=1)
     categories = {c.id: c for c in session.scalars(select(Category))}
     roots = _roots(categories)
 
     # Colors follow the categories with the most spending overall, not this month's ranking
     overall: dict[int, Decimal] = defaultdict(Decimal)
-    for category_id, total in _expense_totals(session, categories, None, today).items():
+    through = max(last, next_month(today.replace(day=1)) - timedelta(days=1))
+    for category_id, total in _expense_totals(session, categories, None, through).items():
         overall[roots[category_id]] += total
     ranked = sorted((r for r, t in overall.items() if t > 0), key=lambda r: (-overall[r], r))
     slots = {root: i for i, root in enumerate(ranked[:COLOR_SLOTS])}

@@ -193,6 +193,12 @@ function MonthFlow({ flow }: { flow: CashFlow }) {
         </div>
         <ProgressBar value={flow.variable_spent} max={Math.max(0, toNumber(flow.variable_budget))} size="thin" label="הוצאות משתנות מתוך התקציב" />
       </div>
+      {toNumber(flow.upcoming_out) > 0 && (
+        <p className="muted" style={{ fontSize: 13, margin: 0 }}>
+          כולל <Money value={flow.upcoming_out} decimals={0} /> בחיובים שתאריכם בהמשך החודש
+          {flow.upcoming_count > 1 ? ` (${flow.upcoming_count} תנועות)` : ""}
+        </p>
+      )}
     </Link>
   );
 }

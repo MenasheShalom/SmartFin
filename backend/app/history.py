@@ -68,6 +68,9 @@ def month_end_balances(
 
 
 def monthly_history(session: Session, today: date) -> list[MonthHistory]:
+    # A month counts everything dated in it, also what's dated after today (installments);
+    # balances stay as of today
+    month_end = next_month(today.replace(day=1)) - timedelta(days=1)
     first = session.scalar(select(func.min(Transaction.date)))
     if first is None:
         return []
@@ -77,7 +80,7 @@ def monthly_history(session: Session, today: date) -> list[MonthHistory]:
     expenses: dict[date, Decimal] = defaultdict(Decimal)
     rows = session.execute(
         select(Transaction.date, Transaction.category_id, func.sum(Transaction.amount))
-        .where(Transaction.date <= today, Transaction.category_id.is_not(None), in_cashflow())
+        .where(Transaction.date <= month_end, Transaction.category_id.is_not(None), in_cashflow())
         .group_by(Transaction.date, Transaction.category_id)
     )
     for day, category_id, total in rows:
@@ -94,7 +97,7 @@ def monthly_history(session: Session, today: date) -> list[MonthHistory]:
     uncategorized = session.execute(
         select(Transaction.date, Transaction.amount, Account.account_type)
         .join(Account, Account.id == Transaction.account_id)
-        .where(Transaction.date <= today, Transaction.category_id.is_(None), in_cashflow())
+        .where(Transaction.date <= month_end, Transaction.category_id.is_(None), in_cashflow())
     )
     for day, amount, account_type in uncategorized:
         month = day.replace(day=1)
