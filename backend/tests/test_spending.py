@@ -66,3 +66,16 @@ def test_future_month_is_empty(client, world):
 
 def test_bad_month_is_rejected(client, world):
     assert client.get("/api/spending?month=2026-13").status_code == 422
+
+
+def test_marked_transactions_stay_out_of_the_pie(client, world, session):
+    from app.models import Transaction
+    from sqlalchemy import select
+
+    car_txn = session.scalars(select(Transaction).where(Transaction.amount == -400)).one()
+    client.put(f"/api/transactions/{car_txn.id}/cashflow", json={"out_of_cashflow": True})
+    body = client.get("/api/spending?month=2026-09").json()
+    assert [c["name"] for c in body["categories"]] == ["מזון"]
+    assert body["total"] == "780.00"
+    marked = client.get("/api/transactions?month=2026-09&out_of_cashflow=true").json()
+    assert [t["id"] for t in marked] == [car_txn.id]

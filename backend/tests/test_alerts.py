@@ -125,7 +125,7 @@ def test_low_balance_weekly_for_bank_accounts_only(client, session, channel):
 
 def test_large_transactions(client, session, channel):
     configure(large_transaction_threshold=Decimal(1000))
-    transfers = Category(name="Transfers", kind=CategoryKind.TRANSFER)
+    transfers = Category(name="Refunds", kind=CategoryKind.INCOME)
     session.add(transfers)
     session.flush()
     session.add(CategorizationRule(match_pattern="card bill", category_id=transfers.id))

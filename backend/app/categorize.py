@@ -1,9 +1,10 @@
 """Automatic categorization: card bills first, then the first matching rule.
 
 Card bills: a bank-account transaction that pays a credit card SmartFin also syncs ("ישראכרט",
-"לאומי מאסטרקרד") is filed under the transfers category, because the card's own purchases are
-already counted; counting the bill too would count that spending twice. A bill for a card that
-isn't synced stays with the rules, since it is the only record of that spending. A card counts as
+"לאומי מאסטרקרד") is marked as a card bill, which keeps it out of the cash flow: the card's own
+purchases are already counted, and counting the bill too would count that spending twice. It is
+also filed under the category earlier card bills are in. A bill for a card that isn't synced is
+left to the rules and counts, since it is the only record of that spending. A card counts as
 synced for bills dated from its first transaction to its last sync.
 
 Rules are tried by priority (highest first), then longest pattern first so a specific rule
@@ -25,8 +26,6 @@ from app.models import (
     Account,
     AccountType,
     CategorizationRule,
-    Category,
-    CategoryKind,
     Transaction,
 )
 
@@ -90,16 +89,20 @@ class SyncedCard:
 
 class CardBills:
     def __init__(self, category_id: int | None, cards: Iterable[SyncedCard]):
-        # Where card bills are filed; None (no transfers category) turns this off
+        # Where card bills are filed (where the latest one is); None leaves them to the rules
         self.category_id = category_id
         self.cards = list(cards)
 
     @classmethod
     def load(cls, session: Session) -> "CardBills":
         category_id = session.scalar(
-            select(Category.id)
-            .where(Category.kind == CategoryKind.TRANSFER)
-            .order_by(Category.parent_id.is_not(None), Category.id)
+            select(Transaction.category_id)
+            .where(
+                Transaction.card_bill.is_(True),
+                Transaction.category_manual.is_(False),
+                Transaction.category_id.is_not(None),
+            )
+            .order_by(Transaction.date.desc(), Transaction.id.desc())
             .limit(1)
         )
         first_txn, last_synced = func.min(Transaction.date), func.max(Account.last_synced_at)
@@ -118,10 +121,8 @@ class CardBills:
         ]
         return cls(category_id, cards)
 
-    def category_for(self, text: str, day: date) -> int | None:
-        if self.category_id is not None and any(card.paid_by(text, day) for card in self.cards):
-            return self.category_id
-        return None
+    def is_bill(self, text: str, day: date) -> bool:
+        return any(card.paid_by(text, day) for card in self.cards)
 
 
 class Categorizer:
@@ -160,15 +161,35 @@ class Categorizer:
     ) -> int | None:
         """Card bills need the account type and date; without them only the rules apply."""
         text = normalize(f"{description} {memo or ''}")
-        if self.card_bills and account_type == AccountType.BANK and day is not None:
-            card_bill = self.card_bills.category_for(text, day)
-            if card_bill is not None:
-                return card_bill
+        if self.card_bills and self.card_bills.category_id is not None:
+            if self.is_card_bill(description, memo, account_type=account_type, day=day):
+                return self.card_bills.category_id
         folded = text.casefold()
         for rule in self.rules:
             if rule.matches(text, folded):
                 return rule.category_id
         return None
+
+    def is_card_bill(
+        self,
+        description: str,
+        memo: str | None = None,
+        *,
+        account_type: AccountType | None = None,
+        day: date | None = None,
+    ) -> bool:
+        """A bank payment of a card SmartFin syncs: kept out of the cash flow"""
+        if not self.card_bills or account_type != AccountType.BANK or day is None:
+            return False
+        return self.card_bills.is_bill(normalize(f"{description} {memo or ''}"), day)
+
+    def card_bill_of(self, txn: Transaction) -> bool:
+        return self.is_card_bill(
+            txn.raw_description,
+            txn.memo,
+            account_type=self.account_types.get(txn.account_id),
+            day=txn.date,
+        )
 
     def category_of(self, txn: Transaction) -> int | None:
         """For a stored transaction."""
@@ -181,11 +202,17 @@ class Categorizer:
 
 
 def apply_rules(session: Session) -> int:
-    """Re-categorize every transaction not categorized by hand: card bills, then the rules.
+    """Work out which transactions are card bills, then re-categorize every transaction not
+    categorized by hand: card bills, then the rules.
 
     Returns how many transactions changed category. The caller commits.
     """
     session.flush()
+    categorizer = Categorizer.load(session)
+    for txn in session.scalars(select(Transaction)):
+        txn.card_bill = categorizer.card_bill_of(txn)
+    session.flush()
+    # The card bills' category follows the marks just worked out
     categorizer = Categorizer.load(session)
     changed = 0
     automatic = select(Transaction).where(Transaction.category_manual.is_(False))

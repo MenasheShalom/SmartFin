@@ -480,6 +480,11 @@ a.list-row:active {
   color: var(--negative);
 }
 
+/* Left out of the cash flow: still listed, but it doesn't count */
+.tag-out {
+  font-style: italic;
+}
+
 /* ---------- Buttons & inputs ---------- */
 
 .button {

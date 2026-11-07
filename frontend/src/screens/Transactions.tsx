@@ -7,6 +7,7 @@ import {
   useCategories,
   useCategoryMutations,
   useTransactions,
+  useSetCashflowMark,
   useUpdateTransaction,
 } from "../api/queries";
 import type { Account, Category, Transaction } from "../api/types";
@@ -194,7 +195,6 @@ export function NewCategorySheet({
       (group === "other" ? c.kind !== "expense" : c.kind === "expense" && c.is_fixed === (group === "fixed")),
   );
   const [parentId, setParentId] = useState<number | "">("");
-  const [otherKind, setOtherKind] = useState<"income" | "transfer">("income");
   const { create } = useCategoryMutations();
   const toast = useToast();
 
@@ -203,7 +203,7 @@ export function NewCategorySheet({
     if (!trimmed) return;
     create.mutate(
       parentId === ""
-        ? { name: trimmed, kind: group === "other" ? otherKind : "expense", is_fixed: group === "fixed" }
+        ? { name: trimmed, kind: group === "other" ? "income" : "expense", is_fixed: group === "fixed" }
         : { name: trimmed, parent_id: parentId },
       {
         onSuccess: onCreated,
@@ -236,16 +236,6 @@ export function NewCategorySheet({
             ))}
           </select>
         </label>
-        {group === "other" && parentId === "" && (
-          <div className="segmented" role="group" aria-label="סוג">
-            <button type="button" aria-pressed={otherKind === "income"} onClick={() => setOtherKind("income")}>
-              הכנסה
-            </button>
-            <button type="button" aria-pressed={otherKind === "transfer"} onClick={() => setOtherKind("transfer")}>
-              העברה בין חשבונות
-            </button>
-          </div>
-        )}
         <button type="submit" className="button" disabled={!name.trim() || create.isPending}>
           יצירה
         </button>
@@ -325,6 +315,46 @@ function AllTransactions() {
   );
 }
 
+/** Whether the transaction counts in the cash flow; saved as soon as it's flipped */
+function CashflowSwitch({ txn }: { txn: Transaction }) {
+  const [out, setOut] = useState(txn.out_of_cashflow);
+  const mark = useSetCashflowMark();
+  const toast = useToast();
+  const change = (next: boolean) => {
+    setOut(next);
+    // Matching what the app would do on its own goes back to automatic
+    mark.mutate(
+      { id: txn.id, out_of_cashflow: next === txn.card_bill ? null : next },
+      {
+        onSuccess: () => toast(next ? "התנועה לא תיספר בתזרים." : "התנועה תיספר בתזרים."),
+        onError: (err) => {
+          setOut(!next);
+          toast(errorMessage(err));
+        },
+      },
+    );
+  };
+  return (
+    <label className="switch-row">
+      <span>
+        מחוץ לתזרים
+        <span className="field-hint" style={{ display: "block" }}>
+          {txn.card_bill
+            ? "תשלום חשבון כרטיס אשראי. הרכישות עצמן כבר נספרות, ולכן הוא מחוץ לתזרים מעצמו"
+            : "לא נספרת בהוצאות, בהכנסות, בתקציב ובהיסטוריה. למשל העברה לחיסכון או להשקעה"}
+        </span>
+      </span>
+      <input
+        type="checkbox"
+        className="switch"
+        checked={out}
+        disabled={mark.isPending}
+        onChange={(e) => change(e.target.checked)}
+      />
+    </label>
+  );
+}
+
 function EditTransactionSheet({ txn, categories, onClose }: { txn: Transaction; categories: Category[]; onClose: () => void }) {
   const [categoryId, setCategoryId] = useState<number | null>(txn.category_id);
   const [remember, setRemember] = useState(false);
@@ -356,6 +386,7 @@ function EditTransactionSheet({ txn, categories, onClose }: { txn: Transaction; 
         {formatDay(txn.date)} · <Money value={txn.amount} decimals={2} />
         {txn.memo ? ` · ${txn.memo}` : ""}
       </p>
+      <CashflowSwitch txn={txn} />
       <CategoryPicker categories={categories} value={categoryId} onChange={setCategoryId} onAddNew={setAdding} />
       <label className="check">
         <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />

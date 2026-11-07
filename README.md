@@ -80,9 +80,9 @@ You need Docker with Docker Compose on the machine that will run SmartFin.
 
 5. **Sort the first transactions.** Open תנועות: each transaction waits for a category. With
    "remember for next time" ticked, the next ones from the same place are filed automatically.
-   The monthly bill for a card SmartFin also syncs is filed as **העברות בין חשבונות** on its
-   own (see [Card bills](#card-bills)); a bill for a card you haven't connected stays as
-   spending, since it's the only record of it.
+   The monthly bill for a card SmartFin also syncs is marked **מחוץ לתזרים** on its own (see
+   [Card bills](#card-bills)); a bill for a card you haven't connected stays as spending, since
+   it's the only record of it.
 
 6. **Check the plan.** In תוכנית, see that the fixed bills (rent, insurance, subscriptions) look
    right and set a savings goal. Expected income is the average of the last three months unless
@@ -373,16 +373,26 @@ For each month:
 - **The end-of-month forecast** projects day-to-day spending from the pace so far, blended with
   the plan early in the month (the pace counts more as the month goes on).
 
-Income and transfers never count as spending. Uncategorized transactions are left out of the
-plan, and the app says how much is waiting to be sorted.
+Income never counts as spending. Uncategorized transactions are left out of the plan, and the
+app says how much is waiting to be sorted.
+
+### Out of the cash flow
+
+Every transaction counts in the cash flow (spending, income, the plan, budgets, the pie and
+the history), whatever its category, except the ones marked **מחוץ לתזרים**: card bills, on
+their own (see [Card bills](#card-bills)), and anything you mark yourself from the
+transaction's screen, such as money moved to savings or investments or a loan between family.
+The mark is separate from the category, so a transaction keeps its category either way, and it
+works for income too. Marking a card bill as counted overrides the automatic mark; switching it
+back returns it to automatic. Marked transactions still show in the transaction lists, tagged.
 
 ### Card bills
 
 A card's purchases come in from the card, and the bank shows one charge a month that pays for
 them ("ישראכרט", "לאומי מאסטרקרד"). Counting both would count that spending twice, so when the
-bank charge pays a card SmartFin syncs, it's filed under the first transfers category
-(העברות בין חשבונות) on its own, and only the card's purchases count. This happens on every
-sync, for new and older bank lines alike.
+bank charge pays a card SmartFin syncs, it's marked out of the cash flow on its own, and only
+the card's purchases count. It's also filed under the category the earlier card bills are in.
+This happens on every sync, for new and older bank lines alike.
 
 - A bill for a card that isn't connected stays as spending: it's the only record of it.
 - A card counts as synced for bills dated from its first transaction to its last sync, so
@@ -391,14 +401,14 @@ sync, for new and older bank lines alike.
   (אמריקן אקספרס), Cal (כאל), Max (מקס איט, לאומי קארד) and Leumi's own cards (לאומי ויזה,
   לאומי מאסטרקרד). Two cards from the same company can't be told apart by the bill, so they
   count as synced if either is.
-- Setting a category by hand always wins, as with rules.
+- Setting a category or the mark by hand always wins, as with rules.
 
 ### History
 
 Income and expenses per month come from categorized transactions, and from ones not sorted yet by
 their direction: money out of any account is an expense, money into a card is a refund (it
-reduces expenses), and money into a bank account is income. Bills for synced cards are already
-transfers (see [Card bills](#card-bills)). The end-of-month balance is the
+reduces expenses), and money into a bank account is income. Anything out of the cash flow is
+left out (see [Out of the cash flow](#out-of-the-cash-flow)). The end-of-month balance is the
 total of your bank accounts: the balance snapshot from that month where there is one, otherwise
 worked back from today's balance through the transactions since. Months before an account's data
 starts show no balance rather than a wrong one.
@@ -448,10 +458,11 @@ The API lives under `/api`. Interactive docs are at `/docs`.
 
 The API lives under `/api`. Interactive docs are at http://localhost:8000/docs.
 
-**Categories** have two levels (Food › Groceries) and a kind: `expense`, `income` or
-`transfer`. A starter set is created on first start; rename, add or delete freely. Mark
-money moving between your own accounts as a **transfer**. Bills for synced cards are filed
-as transfers on their own (see [Card bills](#card-bills)).
+**Categories** have two levels (Food › Groceries) and a kind: `expense` or `income`. A
+starter set is created on first start; rename, add or delete freely. Every category counts
+in the cash flow; to leave a single transaction out, mark it with
+`PUT /api/transactions/{id}/cashflow` (see [Out of the cash flow](#out-of-the-cash-flow)).
+The `transfer` kind is gone: migration 0010 turned those categories into expense categories.
 
 **Rules** file transactions into categories as they arrive. A plain pattern matches anywhere
 in the description or memo, ignoring case and extra spaces; set `is_regex` for a regular
@@ -489,7 +500,7 @@ curl 'localhost:8000/api/budgets/summary?month=2026-08'
 
 The summary gives spent, remaining and percent used for each budget, spending in categories
 without a budget, and the count and total of uncategorized transactions. Spending is net:
-refunds reduce it. Income and transfers never count as spending.
+refunds reduce it. Income and anything out of the cash flow never count as spending.
 
 Every `/api` call needs the login session cookie (and, for changes, an `X-Requested-With:
 smartfin` header). The curl examples assume you have logged in with `-c`/`-b` cookie files;

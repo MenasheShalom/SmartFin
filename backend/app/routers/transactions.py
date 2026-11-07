@@ -8,7 +8,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.categorize import Categorizer, apply_rules, normalize
-from app.models import CategorizationRule, Category, Transaction
+from app.models import CategorizationRule, Category, Transaction, in_cashflow
 from app.months import MONTH_PATTERN, next_month, parse_month
 from app.routers.common import SessionDep, existing_category, get_or_404
 from app.routers.rules import RuleOut
@@ -28,6 +28,17 @@ class TransactionOut(BaseModel):
     memo: str | None
     category_id: int | None
     category_manual: bool
+    # Kept out of the cash flow: a card bill, or marked by hand
+    out_of_cashflow: bool
+    card_bill: bool
+    # The hand-set mark: None when it's left to card_bill
+    out_of_cashflow_manual: bool | None
+
+
+class CashflowMark(BaseModel):
+    # True keeps it out of the cash flow, False counts it (even a card bill), null goes back
+    # to automatic (only card bills stay out)
+    out_of_cashflow: bool | None
 
 
 class TransactionUpdate(BaseModel):
@@ -71,6 +82,7 @@ def query_transactions(
     date_from: date | None = None,
     date_to: date | None = None,
     q: str | None = None,
+    out_of_cashflow: bool | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> list[Transaction]:
@@ -88,6 +100,8 @@ def query_transactions(
         )
     if uncategorized:
         query = query.where(Transaction.category_id.is_(None))
+    if out_of_cashflow is not None:
+        query = query.where(in_cashflow() if not out_of_cashflow else ~in_cashflow())
     if date_from is not None:
         query = query.where(Transaction.date >= date_from)
     if date_to is not None:
@@ -117,6 +131,8 @@ def list_transactions(
     date_to: date | None = None,
     # Matches the description or memo
     q: Annotated[str | None, Query(max_length=100)] = None,
+    # Only the ones kept out of the cash flow (true) or counted in it (false)
+    out_of_cashflow: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> list[TransactionOut]:
@@ -129,9 +145,19 @@ def list_transactions(
         date_from=date_from,
         date_to=date_to,
         q=q,
+        out_of_cashflow=out_of_cashflow,
         limit=limit,
         offset=offset,
     )
+
+
+@router.put("/{transaction_id}/cashflow")
+def set_cashflow_mark(transaction_id: int, body: CashflowMark, session: SessionDep) -> TransactionOut:
+    """Keep a transaction out of the cash flow (or count it), whatever its category"""
+    txn = get_or_404(session, Transaction, transaction_id)
+    txn.out_of_cashflow_manual = body.out_of_cashflow
+    session.commit()
+    return TransactionOut.model_validate(txn)
 
 
 @router.patch("/{transaction_id}")

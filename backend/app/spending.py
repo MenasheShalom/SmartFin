@@ -9,7 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.budgeting import money
-from app.models import Account, AccountType, Category, CategoryKind, Transaction
+from app.models import Account, AccountType, Category, CategoryKind, Transaction, in_cashflow
 from app.months import format_month, next_month
 
 # How many categories get a color of their own; the rest share "other"
@@ -61,7 +61,7 @@ def _expense_totals(
     """Net money out per expense category (not rolled up) in the date range"""
     query = (
         select(Transaction.category_id, func.sum(Transaction.amount))
-        .where(Transaction.date <= last, Transaction.category_id.is_not(None))
+        .where(Transaction.date <= last, Transaction.category_id.is_not(None), in_cashflow())
         .group_by(Transaction.category_id)
     )
     if first is not None:
@@ -124,6 +124,7 @@ def month_spending(session: Session, first_day: date, today: date) -> MonthSpend
                 Transaction.date >= first_day,
                 Transaction.date <= last,
                 Transaction.category_id.is_(None),
+                in_cashflow(),
             )
         )
         for amount, account_type in rows:

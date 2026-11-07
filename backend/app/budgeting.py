@@ -7,7 +7,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Budget, Category, CategoryKind, Transaction
+from app.models import Budget, Category, CategoryKind, Transaction, in_cashflow
 from app.months import format_month, next_month
 from app.routers.categories import tree_order
 
@@ -59,7 +59,7 @@ def summarize(session: Session, start: date, today: date) -> BudgetSummary:
     if through is not None:
         rows = session.execute(
             select(Transaction.category_id, func.sum(Transaction.amount), func.count())
-            .where(Transaction.date >= start, Transaction.date <= through)
+            .where(Transaction.date >= start, Transaction.date <= through, in_cashflow())
             .group_by(Transaction.category_id)
         )
         for category_id, total, count in rows:

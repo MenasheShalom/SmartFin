@@ -7,7 +7,7 @@ export type Group = "variable" | "fixed" | "other";
 export const GROUP_LABELS: Record<Group, string> = {
   variable: "משתנה",
   fixed: "קבועה",
-  other: "אחר",
+  other: "הכנסות",
 };
 
 export function groupOf(category: Category): Group {

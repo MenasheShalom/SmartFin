@@ -2,7 +2,7 @@ from collections import defaultdict
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, ConfigDict, StringConstraints
+from pydantic import AfterValidator, BaseModel, ConfigDict, StringConstraints
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -24,18 +24,27 @@ class CategoryOut(BaseModel):
     is_fixed: bool
 
 
+def not_transfer(kind: CategoryKind | None) -> CategoryKind | None:
+    if kind == CategoryKind.TRANSFER:
+        raise ValueError(
+            "Transfer categories are gone: every category counts in the cash flow, and a "
+            "transaction is kept out of it by marking it (PUT /api/transactions/{id}/cashflow)"
+        )
+    return kind
+
+
 class CategoryCreate(BaseModel):
     name: Name
     parent_id: int | None = None
     # Top-level only; subcategories take their parent's kind. Defaults to expense.
-    kind: CategoryKind | None = None
+    kind: Annotated[CategoryKind | None, AfterValidator(not_transfer)] = None
     # Fixed monthly bill rather than day-to-day spending; subcategories default to the parent's
     is_fixed: bool | None = None
 
 
 class CategoryUpdate(BaseModel):
     name: Name | None = None
-    kind: CategoryKind | None = None
+    kind: Annotated[CategoryKind | None, AfterValidator(not_transfer)] = None
     # Changing a parent changes its subcategories too
     is_fixed: bool | None = None
 

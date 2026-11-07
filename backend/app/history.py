@@ -9,7 +9,15 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.budgeting import money
-from app.models import Account, AccountType, BalanceSnapshot, Category, CategoryKind, Transaction
+from app.models import (
+    Account,
+    AccountType,
+    BalanceSnapshot,
+    Category,
+    CategoryKind,
+    Transaction,
+    in_cashflow,
+)
 from app.months import format_month, next_month
 
 
@@ -69,24 +77,24 @@ def monthly_history(session: Session, today: date) -> list[MonthHistory]:
     expenses: dict[date, Decimal] = defaultdict(Decimal)
     rows = session.execute(
         select(Transaction.date, Transaction.category_id, func.sum(Transaction.amount))
-        .where(Transaction.date <= today, Transaction.category_id.is_not(None))
+        .where(Transaction.date <= today, Transaction.category_id.is_not(None), in_cashflow())
         .group_by(Transaction.date, Transaction.category_id)
     )
     for day, category_id, total in rows:
         kind = kinds.get(category_id)
         if kind == CategoryKind.INCOME:
             income[day.replace(day=1)] += money(total)
-        elif kind == CategoryKind.EXPENSE:
+        elif kind is not None:
             expenses[day.replace(day=1)] -= money(total)
 
     # Not sorted yet: the totals shouldn't wait for that. Money out of any account is spending;
     # money into a card is a refund, which reduces it; money into a bank account is income.
-    # (Bills for synced cards are filed as transfers automatically; an uncategorized bill for
-    # another card counts as spending, as it's the only record of it.)
+    # (Bills for synced cards are marked out of the cash flow automatically; an uncategorized
+    # bill for another card counts as spending, as it's the only record of it.)
     uncategorized = session.execute(
         select(Transaction.date, Transaction.amount, Account.account_type)
         .join(Account, Account.id == Transaction.account_id)
-        .where(Transaction.date <= today, Transaction.category_id.is_(None))
+        .where(Transaction.date <= today, Transaction.category_id.is_(None), in_cashflow())
     )
     for day, amount, account_type in uncategorized:
         month = day.replace(day=1)

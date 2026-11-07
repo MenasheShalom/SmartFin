@@ -183,7 +183,6 @@ const KIND_SECTIONS: { kind: CategoryKind; fixed?: boolean; title: string }[] = 
   { kind: "expense", fixed: true, title: "הוצאות קבועות" },
   { kind: "expense", fixed: false, title: "הוצאות משתנות" },
   { kind: "income", title: "הכנסות" },
-  { kind: "transfer", title: "העברות בין חשבונות" },
 ];
 
 export function CategoriesScreen() {
@@ -193,7 +192,7 @@ export function CategoriesScreen() {
   return (
     <SubScreen
       title="קטגוריות"
-      subtitle="קבועות נכנסות לתוכנית החודשית, משתנות לתקציב השבועי. העברות לא נספרות כהוצאה."
+      subtitle="קבועות נכנסות לתוכנית החודשית, משתנות לתקציב השבועי. כל הקטגוריות נספרות בתזרים; תנועה בודדת אפשר לסמן ״מחוץ לתזרים״ מתוך התנועה עצמה."
       action={
         <button type="button" className="icon-button" aria-label="קטגוריה חדשה" onClick={() => setEditing("new")}>
           <PlusIcon size={20} />
@@ -325,7 +324,6 @@ function CategorySheet({ category, categories, onClose }: { category: Category |
             <select className="input" value={kind} onChange={(e) => setKind(e.target.value as CategoryKind)}>
               <option value="expense">הוצאה</option>
               <option value="income">הכנסה</option>
-              <option value="transfer">העברה בין חשבונות (לא נספרת)</option>
             </select>
           </label>
         )}

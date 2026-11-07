@@ -1,6 +1,7 @@
 // Mirrors the backend's response models. Money is a decimal string.
 export type Money = string;
 
+/** "transfer" is no longer used: what stays out of the cash flow is marked on the transaction */
 export type CategoryKind = "expense" | "income" | "transfer";
 
 export interface Category {
@@ -21,6 +22,12 @@ export interface Transaction {
   memo: string | null;
   category_id: number | null;
   category_manual: boolean;
+  /** Left out of the cash flow: a card bill, or marked by hand */
+  out_of_cashflow: boolean;
+  /** A bank payment of a credit card bill (out of the cash flow unless marked otherwise) */
+  card_bill: boolean;
+  /** The hand-set mark; null leaves it to card_bill */
+  out_of_cashflow_manual: boolean | null;
 }
 
 export interface Rule {

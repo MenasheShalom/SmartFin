@@ -43,12 +43,24 @@ def test_uncategorized_counts_by_sign_and_account(client, session, world):
     make_txn(session, card, "refund", 200, day=date(2026, 9, 7))
     make_txn(session, world["bank"], "salary?", 1000, day=date(2026, 9, 8))
     make_txn(session, world["bank"], "atm", -300, day=date(2026, 9, 9))
-    transfers = make_category(session, "העברות", kind=CategoryKind.TRANSFER)
-    make_txn(session, world["bank"], "card bill", -4000, day=date(2026, 9, 10), category=transfers)
+    transfers = make_category(session, "העברות")
+    make_txn(session, world["bank"], "card bill", -4000, day=date(2026, 9, 10), category=transfers, card_bill=True)
+    make_txn(session, world["bank"], "to savings", -9000, day=date(2026, 9, 11), out_of_cashflow=True)
+    make_txn(session, world["bank"], "bit to a friend", -150, day=date(2026, 9, 12), category=transfers)
     session.commit()
     september = client.get("/api/history").json()[1]
-    # 3000 + 1000 in; 2000 + 500 + 700 + 300 - 200 out; the transfer counts as neither
-    assert (september["income"], september["expenses"]) == ("4000.00", "3300.00")
+    # 3000 + 1000 in; 2000 + 500 + 700 + 300 - 200 + 150 out. The card bill and the savings
+    # are out of the cash flow; a transfer that isn't counts like any expense
+    assert (september["income"], september["expenses"]) == ("4000.00", "3450.00")
+
+
+def test_a_hand_mark_counts_or_drops_anything(client, session, world):
+    income = make_category(session, "הכנסות", kind=CategoryKind.INCOME)
+    make_txn(session, world["bank"], "pension withdrawal", 20000, day=date(2026, 9, 14), category=income, out_of_cashflow=True)
+    make_txn(session, world["bank"], "bill, counted anyway", -100, day=date(2026, 9, 15), card_bill=True, out_of_cashflow=False)
+    session.commit()
+    september = client.get("/api/history").json()[1]
+    assert (september["income"], september["expenses"]) == ("3000.00", "3300.00")
 
 
 def test_snapshot_wins_over_back_calculation(client, session, world):
