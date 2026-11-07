@@ -2,8 +2,8 @@
 and categorize transactions.
 
 The reading tools run in read-only transactions on Postgres. The only tools that change anything
-are categorize_transactions and add_rule, and all they change is which category a transaction
-has and the categorization rules. Run it with  python -m app.mcp_server  (the "mcp" service in
+are categorize_transactions, set_out_of_cashflow and add_rule, and all they change is which
+category a transaction has, whether it counts in the cash flow, and the categorization rules. Run it with  python -m app.mcp_server  (the "mcp" service in
 docker-compose).
 """
 
@@ -28,7 +28,14 @@ from app.config import Settings
 from app.history import MonthHistory, monthly_history
 from app.labels import institution_label, masked
 from app.mcp_server.oauth import SCOPE, SmartFinOAuthProvider
-from app.models import Account, CategorizationRule, Category, CategoryKind, Transaction
+from app.models import (
+    Account,
+    CategorizationRule,
+    Category,
+    CategoryKind,
+    Transaction,
+    in_cashflow,
+)
 from app.months import MONTH_PATTERN, get_today, next_month, parse_month
 from app.routers.accounts import AccountOut, SyncStatus, list_accounts, sync_status
 from app.routers.categories import tree_order
@@ -38,10 +45,11 @@ INSTRUCTIONS = """\
 SmartFin is the user's personal cash-flow app for their Israeli bank and credit-card accounts.
 Amounts are in ILS (₪). On transactions, negative amounts are money out and positive are money in.
 Category and account names are in Hebrew; answer in the user's language.
-Categories have a kind: expense (fixed bills or day-to-day spending), income, or transfer (money
-between the user's own accounts, such as paying the card bill from the bank; never spending).
-A bank charge that pays a card SmartFin also syncs is filed as a transfer automatically, since
-the card's own purchases are already counted; don't move those to an expense category.
+Categories have a kind: expense (fixed bills or day-to-day spending) or income. Every
+transaction counts in the cash flow unless it is out_of_cashflow: a bank charge that pays a card
+SmartFin also syncs is marked so automatically (the card's own purchases are already counted),
+and the user marks others by hand (moving money to savings or investments, a loan between
+family). set_out_of_cashflow changes the mark; don't clear it on card bills.
 Uncategorized transactions are left out of the cash-flow and budget numbers and counted separately.
 Weeks run Sunday to Saturday. Months are written YYYY-MM. Start with get_cash_flow for questions
 about this month, and get_history for trends.
@@ -77,13 +85,15 @@ class TransactionInfo(BaseModel):
     memo: str | None
     category: str | None
     account: str
+    # Left out of every total: a card bill, or marked by the user
+    out_of_cashflow: bool
 
 
 class CategoryTotal(BaseModel):
     category_id: int | None
     name: str
     kind: CategoryKind | None
-    # Money out is positive for expenses; for income and transfers, the net amount
+    # Money out is positive for expenses; for income (and the out-of-cash-flow line), the net
     total: Decimal
     count: int
 
@@ -126,6 +136,13 @@ class RuleSaved(BaseModel):
     replaced_existing: bool
     # Transactions the rules moved (never ones categorized by hand)
     recategorized: int
+
+
+def account_names(session: Session) -> dict[int, str]:
+    return {
+        a.id: f"{institution_label(a.institution)} {masked(a.account_number)}"
+        for a in session.scalars(select(Account))
+    }
 
 
 def rule_info(session: Session, rule: CategorizationRule) -> RuleInfo:
@@ -226,11 +243,15 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
             last = date.fromordinal(next_month(first).toordinal() - 1)
         with reader() as session:
             categories = {c.id: c for c in session.scalars(select(Category))}
+            in_range = (Transaction.date >= first, Transaction.date <= last)
             rows = session.execute(
                 select(Transaction.category_id, func.sum(Transaction.amount), func.count())
-                .where(Transaction.date >= first, Transaction.date <= last)
+                .where(*in_range, in_cashflow())
                 .group_by(Transaction.category_id)
             )
+            out_total, out_count = session.execute(
+                select(func.sum(Transaction.amount), func.count()).where(*in_range, ~in_cashflow())
+            ).one()
             totals = []
             for category_id, total, count in rows:
                 category = categories.get(category_id)
@@ -246,7 +267,18 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
                     )
                 )
         order = {CategoryKind.EXPENSE: 0, None: 1, CategoryKind.INCOME: 2, CategoryKind.TRANSFER: 3}
-        return sorted(totals, key=lambda t: (order[t.kind], -t.total))
+        result = sorted(totals, key=lambda t: (order[t.kind], -t.total))
+        if out_count:
+            result.append(
+                CategoryTotal(
+                    category_id=None,
+                    name="מחוץ לתזרים",
+                    kind=None,
+                    total=money(out_total),
+                    count=out_count,
+                )
+            )
+        return result
 
     @server.tool(annotations={"readOnlyHint": True})
     def search_transactions(
@@ -268,10 +300,7 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
         category and account."""
         with reader() as session:
             categories = {c.id: c.name for c in session.scalars(select(Category))}
-            accounts = {
-                a.id: f"{institution_label(a.institution)} {masked(a.account_number)}"
-                for a in session.scalars(select(Account))
-            }
+            accounts = account_names(session)
             found = query_transactions(
                 session,
                 month=month,
@@ -294,6 +323,7 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
                     memo=t.memo,
                     category=categories.get(t.category_id) if t.category_id else None,
                     account=accounts[t.account_id],
+                    out_of_cashflow=t.out_of_cashflow,
                 )
                 for t in found
             ]
@@ -330,6 +360,48 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
         with reader() as session:
             rules = sorted(session.scalars(select(CategorizationRule)), key=rule_order)
             return [rule_info(session, rule) for rule in rules]
+
+    @server.tool(annotations=WRITES)
+    def set_out_of_cashflow(
+        transaction_ids: Annotated[
+            list[int], Field(min_length=1, max_length=200, description="From search_transactions")
+        ],
+        out_of_cashflow: Annotated[
+            bool | None,
+            Field(
+                description="true keeps them out of the cash flow, false counts them, null goes "
+                "back to automatic (only card bills stay out)"
+            ),
+        ],
+    ) -> list[TransactionInfo]:
+        """Keep transactions out of the cash flow (spending, income, budgets, history) or count
+        them again, whatever their category. All or nothing: if any id doesn't exist, nothing
+        changes."""
+        ids = list(dict.fromkeys(transaction_ids))
+        with writer() as session:
+            txns = {t.id: t for t in session.scalars(select(Transaction).where(Transaction.id.in_(ids)))}
+            missing = sorted(set(ids) - set(txns))
+            if missing:
+                raise ToolError(f"No transaction with id {', '.join(map(str, missing))}")
+            for txn in txns.values():
+                txn.out_of_cashflow_manual = out_of_cashflow
+            session.commit()
+            categories = {c.id: c.name for c in session.scalars(select(Category))}
+            accounts = account_names(session)
+            return [
+                TransactionInfo(
+                    id=t.id,
+                    date=t.date,
+                    amount=money(t.amount),
+                    currency=t.currency,
+                    description=t.description,
+                    memo=t.memo,
+                    category=categories.get(t.category_id) if t.category_id else None,
+                    account=accounts[t.account_id],
+                    out_of_cashflow=t.out_of_cashflow,
+                )
+                for t in (txns[i] for i in ids)
+            ]
 
     @server.tool(annotations=WRITES)
     def categorize_transactions(

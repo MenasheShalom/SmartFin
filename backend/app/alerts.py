@@ -117,11 +117,16 @@ def check_large_transactions(
     if threshold is None:
         return []
     not_spending = set(
-        session.scalars(select(Category.id).where(Category.kind != CategoryKind.EXPENSE))
+        session.scalars(select(Category.id).where(Category.kind == CategoryKind.INCOME))
     )
     alerts = []
     for txn in transactions:
-        if txn.amount >= 0 or -txn.amount < threshold or txn.category_id in not_spending:
+        if (
+            txn.amount >= 0
+            or -txn.amount < threshold
+            or txn.category_id in not_spending
+            or txn.out_of_cashflow
+        ):
             continue
         where = with_prefix("ב", txn.description)
         message = f"חיוב גדול: {ils(-txn.amount)} {where}, {txn.date:%d/%m/%Y}."

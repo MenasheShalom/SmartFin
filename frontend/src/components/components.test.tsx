@@ -52,7 +52,7 @@ describe("CategoryPicker", () => {
     await userEvent.click(screen.getByRole("button", { name: "שכירות" }));
     expect(onChange).toHaveBeenCalledWith(4);
 
-    await userEvent.click(screen.getByRole("button", { name: "אחר" }));
+    await userEvent.click(screen.getByRole("button", { name: "הכנסות" }));
     expect(screen.getByRole("button", { name: "משכורת" })).toBeInTheDocument();
   });
 
@@ -68,5 +68,30 @@ describe("ProgressBar", () => {
     expect(screen.getByRole("progressbar", { name: "השבוע" })).toHaveAttribute("aria-valuenow", "25");
     rerender(<ProgressBar value={250} max={200} label="השבוע" />);
     expect(container.querySelector(".bar-fill--over")).not.toBeNull();
+  });
+});
+
+describe("TransactionRow", () => {
+  const txn = {
+    id: 1,
+    account_id: 1,
+    date: "2026-10-02",
+    amount: "-16200.85",
+    currency: "ILS",
+    description: 'ישראכרט בע"מ-י',
+    memo: null,
+    category_id: null,
+    category_manual: false,
+    out_of_cashflow: true,
+    card_bill: true,
+    out_of_cashflow_manual: null,
+  };
+
+  it("says when a transaction is out of the cash flow", async () => {
+    const { TransactionRow } = await import("./TransactionRow");
+    const { rerender } = render(<TransactionRow txn={txn} categories={new Map()} />);
+    expect(screen.getByText(/מחוץ לתזרים/)).toBeInTheDocument();
+    rerender(<TransactionRow txn={{ ...txn, out_of_cashflow: false }} categories={new Map()} />);
+    expect(screen.queryByText(/מחוץ לתזרים/)).not.toBeInTheDocument();
   });
 });

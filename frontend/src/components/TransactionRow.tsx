@@ -19,6 +19,7 @@ export function TransactionRow({ txn, categories, account, onSelect }: Props) {
         <span className="list-row-sub">
           <span className={uncategorized ? "tag-uncategorized" : undefined}>{categoryLabel(txn.category_id, categories)}</span>
           {account && ` · ${account.institution_label} ${ltr(account.account_number)}`}
+          {txn.out_of_cashflow && <span className="tag-out"> · מחוץ לתזרים</span>}
         </span>
       </span>
       <span className="list-row-end">

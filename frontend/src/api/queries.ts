@@ -172,6 +172,16 @@ export function useUpdateTransaction() {
   });
 }
 
+/** Keep a transaction out of the cash flow, count it, or (null) leave it to the automatic rule */
+export function useSetCashflowMark() {
+  const refresh = useRefreshMoney();
+  return useMutation({
+    mutationFn: ({ id, out_of_cashflow }: { id: number; out_of_cashflow: boolean | null }) =>
+      api<Transaction>(`/api/transactions/${id}/cashflow`, { method: "PUT", body: { out_of_cashflow } }),
+    onSuccess: () => refresh(),
+  });
+}
+
 export function useSavePlan() {
   const client = useQueryClient();
   return useMutation({

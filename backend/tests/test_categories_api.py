@@ -66,10 +66,10 @@ def test_kind_change_cascades_to_subcategories(client):
     savings = create(client, name="Savings").json()
     child = create(client, name="Deposit", parent_id=savings["id"]).json()
 
-    response = client.patch(f"/api/categories/{savings['id']}", json={"kind": "transfer"})
-    assert response.json()["kind"] == "transfer"
+    response = client.patch(f"/api/categories/{savings['id']}", json={"kind": "income"})
+    assert response.json()["kind"] == "income"
     kinds = {c["id"]: c["kind"] for c in client.get("/api/categories").json()}
-    assert kinds[child["id"]] == "transfer"
+    assert kinds[child["id"]] == "income"
 
     assert client.patch(f"/api/categories/{child['id']}", json={"kind": "expense"}).status_code == 422
 
@@ -79,8 +79,16 @@ def test_kind_change_blocked_by_budgets(client, session):
     session.add(Budget(category_id=food.id, month=date(2026, 9, 1), limit_amount=Decimal(100)))
     session.commit()
 
-    response = client.patch(f"/api/categories/{food.id}", json={"kind": "transfer"})
+    response = client.patch(f"/api/categories/{food.id}", json={"kind": "income"})
     assert response.status_code == 409
+
+
+def test_no_new_transfer_categories(client):
+    response = create(client, name="Transfers", kind="transfer")
+    assert response.status_code == 422
+    assert "cash flow" in response.text
+    food = create(client, name="Food").json()
+    assert client.patch(f"/api/categories/{food['id']}", json={"kind": "transfer"}).status_code == 422
 
 
 def test_delete_unused_category(client):

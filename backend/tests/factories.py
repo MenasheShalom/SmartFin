@@ -38,6 +38,8 @@ def make_txn(
     memo=None,
     category=None,
     manual=False,
+    card_bill=False,
+    out_of_cashflow=None,
 ) -> Transaction:
     txn = Transaction(
         account_id=account.id,
@@ -49,6 +51,8 @@ def make_txn(
         memo=memo,
         category_id=category.id if category else None,
         category_manual=manual,
+        card_bill=card_bill,
+        out_of_cashflow_manual=out_of_cashflow,
     )
     session.add(txn)
     session.flush()

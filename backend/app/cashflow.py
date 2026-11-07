@@ -17,7 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.budgeting import money
-from app.models import Budget, Category, CategoryKind, MonthlyPlan, Transaction
+from app.models import Budget, Category, CategoryKind, MonthlyPlan, Transaction, in_cashflow
 from app.months import format_month, next_month
 
 INCOME_HISTORY_MONTHS = 3
@@ -79,7 +79,7 @@ def month_start_offset(start: date, months_back: int) -> date:
 def daily_totals(session: Session, first: date, last: date) -> list[tuple[date, int | None, Decimal, int]]:
     rows = session.execute(
         select(Transaction.date, Transaction.category_id, func.sum(Transaction.amount), func.count())
-        .where(Transaction.date >= first, Transaction.date <= last)
+        .where(Transaction.date >= first, Transaction.date <= last, in_cashflow())
         .group_by(Transaction.date, Transaction.category_id)
     )
     return [(day, category_id, money(total), count) for day, category_id, total, count in rows]

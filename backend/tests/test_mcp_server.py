@@ -267,7 +267,7 @@ def test_cash_flow_and_categories(engine, settings, data):
 def test_only_the_categorizing_tools_write(engine, settings):
     tools = asyncio.run(build_server(engine, settings).list_tools())
     writing = {t.name for t in tools if not (t.annotations and t.annotations.read_only_hint)}
-    assert writing == {"categorize_transactions", "add_rule"}
+    assert writing == {"categorize_transactions", "add_rule", "set_out_of_cashflow"}
     assert all(
         t.annotations.destructive_hint is False for t in tools if t.name in writing
     )
@@ -440,3 +440,27 @@ def test_add_rule_rejects_bad_input(engine, settings, uncategorized):
         engine, settings, "add_rule", match_pattern="wolt", category_id=9999
     )
     assert call(engine, settings, "list_rules")["result"] == []
+
+
+def test_set_out_of_cashflow(engine, settings, data):
+    [wolt] = call(engine, settings, "search_transactions", query="Wolt")["result"]
+    assert wolt["out_of_cashflow"] is False
+    [marked] = call(engine, settings, "set_out_of_cashflow", transaction_ids=[wolt["id"]], out_of_cashflow=True)["result"]
+    assert marked["out_of_cashflow"] is True
+
+    totals = call(engine, settings, "spending_by_category", month="2026-09")["result"]
+    assert [(t["name"], t["total"]) for t in totals] == [
+        ("סופר", "500.00"),
+        ("לא מסווג", "-50.00"),
+        ("משכורת", "12000.00"),
+        ("מחוץ לתזרים", "-80.00"),
+    ]
+    flow = call(engine, settings, "get_cash_flow", month="2026-09")
+    assert flow["variable_spent"] == "500.00"
+
+    call(engine, settings, "set_out_of_cashflow", transaction_ids=[wolt["id"]], out_of_cashflow=None)
+    totals = call(engine, settings, "spending_by_category", month="2026-09")["result"]
+    assert "מחוץ לתזרים" not in [t["name"] for t in totals]
+    assert "No transaction with id 999" in call_error(
+        engine, settings, "set_out_of_cashflow", transaction_ids=[999], out_of_cashflow=True
+    )

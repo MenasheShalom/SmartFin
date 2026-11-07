@@ -32,8 +32,8 @@ class AccountType(StrEnum):
 class CategoryKind(StrEnum):
     EXPENSE = "expense"
     INCOME = "income"
-    # Money moving between your own accounts, e.g. paying the card bill from the bank.
-    # Kept out of spending so a card purchase isn't counted twice.
+    # No longer used (migration 0010 made these expense categories): what stays out of the
+    # cash flow is now marked on the transaction, see Transaction.out_of_cashflow
     TRANSFER = "transfer"
 
 
@@ -108,8 +108,20 @@ class Transaction(Base):
     # Set by hand: rules never overwrite it
     category_manual: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
     is_recurring: Mapped[bool] = mapped_column(Boolean, default=False)
+    # A bank payment of a credit card bill: the card's own purchases are counted, so the bill
+    # stays out of the cash flow. Worked out on every sync, like the rules.
+    card_bill: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # Set by hand: True keeps the transaction out of the cash flow (spending, income, budgets,
+    # history), False counts it even if it's a card bill; None leaves it to card_bill
+    out_of_cashflow_manual: Mapped[bool | None] = mapped_column(Boolean)
 
     account: Mapped[Account] = relationship(back_populates="transactions")
+
+    @property
+    def out_of_cashflow(self) -> bool:
+        if self.out_of_cashflow_manual is not None:
+            return self.out_of_cashflow_manual
+        return bool(self.card_bill)
     category: Mapped[Category | None] = relationship()
 
 
@@ -251,3 +263,8 @@ class McpToken(Base):
     client_id: Mapped[str] = mapped_column(String(64))
     scopes: Mapped[str] = mapped_column(String(255))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+def in_cashflow():
+    """SQL filter: the transactions that count in spending, income, budgets and history"""
+    return func.coalesce(Transaction.out_of_cashflow_manual, Transaction.card_bill).is_(False)

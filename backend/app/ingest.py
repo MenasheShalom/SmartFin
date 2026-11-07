@@ -204,6 +204,9 @@ def ingest(
                     category_id=categorizer.category_for(
                         txn.description, memo, account_type=account.account_type, day=day
                     ),
+                    card_bill=categorizer.is_card_bill(
+                        txn.description, memo, account_type=account.account_type, day=day
+                    ),
                 )
             )
 

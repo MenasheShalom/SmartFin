@@ -217,15 +217,15 @@ def categories_by_description(session):
     }
 
 
-@pytest.fixture
-def transfers(session):
-    category = Category(name="העברות בין חשבונות", kind=CategoryKind.TRANSFER)
-    session.add(category)
-    session.commit()
-    return category.id
+def marks_by_description(session):
+    session.expire_all()
+    return {
+        t.description: t.out_of_cashflow
+        for t in session.scalars(select(Transaction).order_by(Transaction.id))
+    }
 
 
-def test_bill_for_a_synced_card_is_a_transfer(client, session, transfers):
+def test_bill_for_a_synced_card_stays_out_of_the_cash_flow(client, session):
     post(client, card([txn(identifier=1, description="שופרסל", date="2026-08-20T21:00:00.000Z")]))
     post(
         client,
@@ -238,17 +238,17 @@ def test_bill_for_a_synced_card_is_a_transfer(client, session, transfers):
             ]
         ),
     )
-    assert categories_by_description(session) == {
-        "שופרסל": None,
-        'ישראכרט בע"מ-י': transfers,
-        "כאל": None,
-        "נופית ישוב ק-י": None,
+    assert marks_by_description(session) == {
+        "שופרסל": False,
+        'ישראכרט בע"מ-י': True,
+        "כאל": False,
+        "נופית ישוב ק-י": False,
     }
 
 
-def test_bills_synced_before_the_card_are_fixed_when_it_syncs(client, session, transfers):
+def test_bills_synced_before_the_card_are_fixed_when_it_syncs(client, session):
     post(client, bank([bank_bill(1, "2026-09-10", -5384.88, "לאומי מאסטרקרד")]))
-    assert categories_by_description(session)["לאומי מאסטרקרד"] is None
+    assert marks_by_description(session)["לאומי מאסטרקרד"] is False
 
     post(
         client,
@@ -258,10 +258,34 @@ def test_bills_synced_before_the_card_are_fixed_when_it_syncs(client, session, t
             number="8344",
         ),
     )
-    assert categories_by_description(session)["לאומי מאסטרקרד"] == transfers
+    assert marks_by_description(session)["לאומי מאסטרקרד"] is True
 
 
-def test_card_bills_leave_hand_set_categories_alone(client, session, transfers):
+def test_card_bills_are_filed_with_the_earlier_ones(client, session):
+    transfers = Category(name="העברות בין חשבונות")
+    session.add(transfers)
+    session.flush()
+    session.add(CategorizationRule(match_pattern="ישראכרט", category_id=transfers.id))
+    session.commit()
+    post(client, card([txn(identifier=1, date="2026-08-20T21:00:00.000Z")]))
+    post(client, card([txn(identifier=2, date="2026-08-20T21:00:00.000Z")], institution="leumiCards", number="8344"))
+    post(
+        client,
+        bank(
+            [
+                bank_bill(1, "2026-09-02", -7935.69, 'ישראכרט בע"מ-י'),
+                bank_bill(2, "2026-09-10", -5384.88, "לאומי מאסטרקרד"),
+            ]
+        ),
+    )
+    found = categories_by_description(session)
+    assert found['ישראכרט בע"מ-י'] == transfers.id
+    # No rule for it: it goes where the card bills already are
+    assert found["לאומי מאסטרקרד"] == transfers.id
+    assert marks_by_description(session)["לאומי מאסטרקרד"] is True
+
+
+def test_card_bills_leave_hand_set_categories_and_marks_alone(client, session):
     post(client, card([txn(identifier=1, date="2026-08-20T21:00:00.000Z")]))
     groceries = Category(name="סופר")
     session.add(groceries)
@@ -280,12 +304,21 @@ def test_card_bills_leave_hand_set_categories_alone(client, session, transfers):
     )
     session.commit()
     post(client, bank([bank_bill(1, "2026-09-02", -7935.69, 'ישראכרט בע"מ-י')]))
-    found = categories_by_description(session)
-    assert found["ישראכרט"] == groceries.id
-    assert found['ישראכרט בע"מ-י'] == transfers
+    bill = session.scalar(select(Transaction).where(Transaction.description == 'ישראכרט בע"מ-י'))
+    assert categories_by_description(session)["ישראכרט"] == groceries.id
+
+    # Counted by hand; the next sync leaves that alone
+    response = client.put(f"/api/transactions/{bill.id}/cashflow", json={"out_of_cashflow": False})
+    assert response.json()["out_of_cashflow"] is False
+    assert response.json()["card_bill"] is True
+    post(client, bank([bank_bill(1, "2026-09-02", -7935.69, 'ישראכרט בע"מ-י')]))
+    assert marks_by_description(session)['ישראכרט בע"מ-י'] is False
+    # Back to automatic
+    response = client.put(f"/api/transactions/{bill.id}/cashflow", json={"out_of_cashflow": None})
+    assert response.json()["out_of_cashflow"] is True
 
 
-def test_card_bill_is_not_a_large_charge(client, session, transfers):
+def test_card_bill_is_not_a_large_charge(client, session):
     app.dependency_overrides[get_settings] = lambda: Settings(
         ingest_token=TOKEN, large_transaction_threshold=Decimal("1000")
     )
