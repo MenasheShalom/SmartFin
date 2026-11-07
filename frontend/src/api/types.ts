@@ -83,6 +83,9 @@ export interface CashFlow {
   current_week_per_day: Money | null;
   uncategorized_count: number;
   uncategorized_net: Money;
+  /** Transactions dated after today but in this month (installments): already counted above */
+  upcoming_count: number;
+  upcoming_out: Money;
 }
 
 export interface MonthHistory {

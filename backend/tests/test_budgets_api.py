@@ -69,7 +69,7 @@ def test_summary(client, session, today):
         (income, 10000, 1),
         (None, -45, 4),
         (None, -5, 5),
-        (groceries, -999, 25),  # after "today": not month-to-date yet
+        (groceries, -999, 25),  # after "today", but in September: counts
     ]:
         make_txn(session, account, "x", amount, day=date(2026, 9, day), category=category)
     make_txn(session, account, "x", -777, day=date(2026, 8, 31), category=groceries)
@@ -89,17 +89,17 @@ def test_summary(client, session, today):
                 "category_id": food.id,
                 "name": "Food",
                 "limit_amount": "2000.00",
-                "spent": "620.50",
-                "remaining": "1379.50",
-                "percent_used": 31.0,
+                "spent": "1619.50",
+                "remaining": "380.50",
+                "percent_used": 81.0,
             },
             {
                 "category_id": groceries.id,
                 "name": "Groceries",
                 "limit_amount": "1200.00",
-                "spent": "450.50",
-                "remaining": "749.50",
-                "percent_used": 37.5,
+                "spent": "1449.50",
+                "remaining": "-249.50",
+                "percent_used": 120.8,
             },
             {
                 "category_id": transport.id,
@@ -112,7 +112,7 @@ def test_summary(client, session, today):
         ],
         # Groceries sits inside the Food budget, so it isn't added again
         "total_limit": "2500.00",
-        "total_spent": "740.50",
+        "total_spent": "1739.50",
         "unbudgeted_spent": "80.00",
         "uncategorized": {"count": 2, "net": "-50.00"},
     }

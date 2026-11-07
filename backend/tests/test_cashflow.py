@@ -4,7 +4,9 @@ from decimal import Decimal
 import pytest
 
 from app.main import app
-from app.models import Budget, CategoryKind
+from sqlalchemy import select
+
+from app.models import Account, Budget, Category, CategoryKind
 from app.months import get_today
 from tests.factories import make_account, make_category, make_txn
 
@@ -71,20 +73,25 @@ def test_current_month(client, setup):
         ],
         "savings_goal": "1000.00",
         "variable_budget": "7900.00",
-        "variable_spent": "600.00",
-        "variable_left": "7300.00",
-        # 600 + 10 days x (2/3 x pace 30 + 1/3 x plan 263.33)
+        # 600 so far, and 999 dated tomorrow
+        "variable_spent": "1599.00",
+        "variable_left": "6301.00",
+        # 600 + 10 days x (2/3 x pace 30 + 1/3 x plan 263.33): more than the 999 already
+        # scheduled for those days, so the 999 isn't added on top
         "projected_variable": "1677.78",
         "forecast": "6222.22",
-        "current_week_per_day": "249.05",
+        # This week's 1843.33, less 100 + 999, over its 7 days left
+        "current_week_per_day": "106.33",
         "uncategorized_count": 1,
         "uncategorized_net": "-50.00",
+        "upcoming_count": 1,
+        "upcoming_out": "999.00",
     }
     assert [(w["start"], w["end"], w["budget"], w["spent"], w["is_current"], w["is_past"]) for w in weeks] == [
         ("2026-09-01", "2026-09-05", "1316.67", "300.00", False, True),
         ("2026-09-06", "2026-09-12", "1843.33", "0.00", False, True),
         ("2026-09-13", "2026-09-19", "1843.33", "200.00", False, True),
-        ("2026-09-20", "2026-09-26", "1843.33", "100.00", True, False),
+        ("2026-09-20", "2026-09-26", "1843.33", "1099.00", True, False),
         ("2026-09-27", "2026-09-30", "1053.33", "0.00", False, False),
     ]
 
@@ -127,3 +134,20 @@ def test_a_bill_budgeted_at_zero_stays_listed(client, setup):
 def test_plan_validation(client):
     assert client.put("/api/plans/2026-13", json={}).status_code == 422
     assert client.put("/api/plans/2026-09", json={"savings_goal": -1}).status_code == 422
+
+
+def test_scheduled_charges_set_the_floor_of_the_forecast(client, session, setup):
+    dining = session.scalars(select(Category).where(Category.name == "מסעדות")).one()
+    bank = session.scalars(select(Account)).first()
+    # Installments due later this month: more than the pace expects for those days
+    make_txn(session, bank, "ivory 3/4", -1500, day=date(2026, 9, 27), category=dining)
+    make_txn(session, bank, "next month", -700, day=date(2026, 10, 2), category=dining)
+    session.commit()
+    flow = client.get("/api/cashflow").json()
+    assert flow["variable_spent"] == "3099.00"
+    # 600 so far + max(999 + 1500 scheduled, 1077.78 expected)
+    assert flow["projected_variable"] == "3099.00"
+    assert (flow["upcoming_count"], flow["upcoming_out"]) == (2, "2499.00")
+    october = client.get("/api/cashflow?month=2026-10").json()
+    assert october["variable_spent"] == "700.00"
+    assert october["upcoming_count"] == 1

@@ -82,3 +82,13 @@ def test_balance_unknown_before_an_accounts_data_starts(client, session, world):
 def test_empty_history(client):
     app.dependency_overrides[get_today] = lambda: date(2026, 9, 20)
     assert client.get("/api/history").json() == []
+
+
+def test_this_month_counts_what_is_dated_after_today(client, session, world):
+    # An installment due later this month counts now; next month's waits for next month
+    make_txn(session, world["bank"], "ivory 3/4", -592, day=date(2026, 9, 27))
+    make_txn(session, world["bank"], "ivory 4/4", -592, day=date(2026, 10, 27))
+    session.commit()
+    history = client.get("/api/history").json()
+    assert [h["month"] for h in history][-1] == "2026-09"
+    assert history[-1]["expenses"] == "3792.00"

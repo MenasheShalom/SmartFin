@@ -49,23 +49,23 @@ class BudgetSummary(BaseModel):
 
 
 def summarize(session: Session, start: date, today: date) -> BudgetSummary:
-    """Spending from the first of the month through today (or the month's end, if earlier)."""
-    through: date | None = min(next_month(start) - timedelta(days=1), today)
+    """The month's spending, including what's dated after today (installments)"""
+    month_end = next_month(start) - timedelta(days=1)
+    through: date | None = min(month_end, today)
     if through < start:
         through = None
 
     net: dict[int | None, Decimal] = {}
     uncategorized_count = 0
-    if through is not None:
-        rows = session.execute(
-            select(Transaction.category_id, func.sum(Transaction.amount), func.count())
-            .where(Transaction.date >= start, Transaction.date <= through, in_cashflow())
-            .group_by(Transaction.category_id)
-        )
-        for category_id, total, count in rows:
-            net[category_id] = money(total)
-            if category_id is None:
-                uncategorized_count = count
+    rows = session.execute(
+        select(Transaction.category_id, func.sum(Transaction.amount), func.count())
+        .where(Transaction.date >= start, Transaction.date <= month_end, in_cashflow())
+        .group_by(Transaction.category_id)
+    )
+    for category_id, total, count in rows:
+        net[category_id] = money(total)
+        if category_id is None:
+            uncategorized_count = count
 
     categories = {c.id: c for c in session.scalars(select(Category))}
 
