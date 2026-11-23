@@ -231,32 +231,30 @@ HTTPS address. Only this service is published; the web app stays private. Connec
 your SmartFin phone number and password, and only Claude's own callback addresses can receive the
 login, so another app can't connect with it.
 
-1. **Publish it.** With [Tailscale Funnel](https://tailscale.com/kb/1223/funnel) on the server
-   (enable Funnel for the machine when it asks):
+1. **Turn it on.** In `.env`, set `COMPOSE_PROFILES=mcp`, then deploy (or run
+   `sh ops/tailscale-serve.sh && docker compose up -d` on the server). This also starts
+   `mcp-tunnel`, a [Cloudflare quick tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/):
+   no account, and nothing to open in the firewall, since it only connects out. It gets a
+   random `https://<name>.trycloudflare.com` address; `ops/mcp-tunnel.sh` writes it to
+   `MCP_PUBLIC_URL` and prints the connector URL.
 
-   ```sh
-   tailscale funnel --bg 8001     # or your MCP_PORT
-   ```
+   The address stays the same while the `mcp-tunnel` container runs, but a new container (after a
+   reboot, say) gets a new one: the deploy log then says `NEW ADDRESS`, and the connector has to
+   be added again with it.
 
-   That gives `https://<machine>.<tailnet>.ts.net`, on the standard HTTPS port. Use that rather
-   than another Funnel port such as 8443: Claude's connector didn't reach a server on 8443. Each
-   port has one target, so if the app was served on that address, this replaces it; move the app
-   to port 8443, still on your tailnet only, with `tailscale serve --bg --https=8443 8000`. A
-   [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/)
-   to `http://localhost:8001` works too.
+   Tailscale Funnel is the other option (`MCP_TUNNEL=funnel` in `.env`: the MCP server at
+   `https://<machine>.<tailnet>.ts.net`, the app moved to port 8443). From the Oracle server it
+   wasn't usable: Funnel's ingress nodes were reachable only through a relay with ~2 s round
+   trips, so connections took 6-15 s to set up or failed, and Claude's connector gave up.
 
-2. **Turn it on.** In `.env`, set `COMPOSE_PROFILES=mcp` and `MCP_PUBLIC_URL` to that address
-   (no path), then `docker compose up -d`.
-
-3. **Connect Claude.** On claude.ai: Settings › Connectors › Add custom connector, with the URL
+2. **Connect Claude.** On claude.ai: Settings › Connectors › Add custom connector, with the URL
    `<MCP_PUBLIC_URL>/mcp`. Leave the advanced OAuth fields empty. Claude opens the SmartFin login;
    sign in. The connector then shows up in the phone app too.
 
 Claude stays connected for 90 days of not using it; using it extends that. Changing your
 phone number or password under הגדרות (or resetting it on the server) disconnects Claude, as it logs
 out other browsers. To stop it altogether, remove `mcp` from `COMPOSE_PROFILES` and run
-`docker compose up -d --remove-orphans`, and turn off the funnel with
-`tailscale funnel --https=443 off`.
+`docker compose up -d --remove-orphans` (that also stops the tunnel).
 
 What Claude can see: the cash flow for any month, history, budgets, spending by category,
 transactions (search by text, month, dates, category or account), categories, and accounts with
