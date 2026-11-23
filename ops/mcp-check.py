@@ -9,11 +9,14 @@ the deploy log is public.
 """
 
 import hashlib
+import json
 import os
 import secrets
+import time
+import urllib.error
+import urllib.request
 from datetime import UTC, datetime, timedelta
 
-import httpx
 from sqlalchemy import delete
 
 from app.db import engine
@@ -42,51 +45,65 @@ headers = {
     "Authorization": f"Bearer {token}",
     "Accept": "application/json, text/event-stream",
     "Content-Type": "application/json",
+    "User-Agent": "SmartFin-deploy-check/1",
 }
 
 
-def rpc(client: httpx.Client, id_: int | None, method: str, params: dict | None = None):
+class Reply:
+    def __init__(self, status: int, body: bytes, headers, seconds: float):
+        self.status, self.content, self.headers, self.seconds = status, body, headers, seconds
+
+    def json(self) -> dict:
+        return json.loads(self.content) if self.content else {}
+
+
+def rpc(id_: int | None, method: str, params: dict | None = None) -> Reply:
     body = {"jsonrpc": "2.0", "method": method}
     if id_ is not None:
         body["id"] = id_
     if params is not None:
         body["params"] = params
-    return client.post(f"{base}/mcp", headers=headers, json=body)
+    request = urllib.request.Request(
+        f"{base}/mcp", data=json.dumps(body).encode(), headers=headers, method="POST"
+    )
+    start = time.monotonic()
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return Reply(response.status, response.read(), response.headers, time.monotonic() - start)
+    except urllib.error.HTTPError as error:
+        return Reply(error.code, error.read(), error.headers, time.monotonic() - start)
 
 
 ok = False
 try:
-    with httpx.Client(timeout=30) as client:
-        r = rpc(
-            client,
-            1,
-            "initialize",
-            {
-                "protocolVersion": "2025-06-18",
-                "capabilities": {},
-                "clientInfo": {"name": "deploy-check", "version": "1"},
-            },
-        )
-        name = r.json().get("result", {}).get("serverInfo", {}).get("name") if r.is_success else None
-        print(f"mcp-check: initialize  http {r.status_code}  {r.elapsed.total_seconds():.2f}s  server={name}")
-        r.raise_for_status()
+    r = rpc(
+        1,
+        "initialize",
+        {
+            "protocolVersion": "2025-06-18",
+            "capabilities": {},
+            "clientInfo": {"name": "deploy-check", "version": "1"},
+        },
+    )
+    name = r.json().get("result", {}).get("serverInfo", {}).get("name") if r.status == 200 else None
+    print(f"mcp-check: initialize  http {r.status}  {r.seconds:.2f}s  server={name}")
+    if r.status == 200:
         if sid := r.headers.get("mcp-session-id"):
             headers["mcp-session-id"] = sid
         headers["mcp-protocol-version"] = r.json()["result"]["protocolVersion"]
-        rpc(client, None, "notifications/initialized")
+        rpc(None, "notifications/initialized")
 
-        r = rpc(client, 2, "tools/list")
-        tools = r.json().get("result", {}).get("tools", []) if r.is_success else []
-        print(f"mcp-check: tools/list  http {r.status_code}  {r.elapsed.total_seconds():.2f}s  tools={len(tools)}")
-        r.raise_for_status()
+        r = rpc(2, "tools/list")
+        tools = r.json().get("result", {}).get("tools", []) if r.status == 200 else []
+        print(f"mcp-check: tools/list  http {r.status}  {r.seconds:.2f}s  tools={len(tools)}")
 
-        r = rpc(client, 3, "tools/call", {"name": "get_cash_flow", "arguments": {}})
-        result = r.json().get("result", {}) if r.is_success else {}
+        r = rpc(3, "tools/call", {"name": "get_cash_flow", "arguments": {}})
+        result = r.json().get("result", {}) if r.status == 200 else {}
         print(
-            f"mcp-check: get_cash_flow  http {r.status_code}  {r.elapsed.total_seconds():.2f}s"
+            f"mcp-check: get_cash_flow  http {r.status}  {r.seconds:.2f}s"
             f"  error={result.get('isError')}  bytes={len(r.content)}"
         )
-        ok = r.is_success and result.get("isError") is False
+        ok = r.status == 200 and result.get("isError") is False and len(tools) > 0
 except Exception as error:  # report, never fail the deploy
     print(f"mcp-check: failed: {type(error).__name__}: {error}")
 finally:
