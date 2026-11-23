@@ -2,8 +2,10 @@
 # Publish SmartFin through Tailscale, the same way every time. Run by deploy.sh on every deploy
 # and by cloud-setup.sh; safe to run by hand. The layout follows .env:
 #
-#   COMPOSE_PROFILES has mcp:  https://<name>        MCP server, public through Funnel
-#                              https://<name>:8443   the app, tailnet only
+#   COMPOSE_PROFILES has mcp:  https://<name>:8443   the app, tailnet only
+#                              https://<name>        MCP server, public through Funnel, only
+#                                                    with MCP_TUNNEL=funnel (otherwise Claude
+#                                                    connects through ops/mcp-tunnel.sh)
 #   otherwise:                 https://<name>        the app, tailnet only
 #   BIND_ADDRESS=127.0.0.1:    http://<tailnet IP>:8000   the app, tailnet only, for devices
 #                              where the ts.net name doesn't resolve through Tailscale
@@ -17,6 +19,10 @@ warn() { echo "tailscale: WARNING: $*" >&2; }
 # A first Funnel or HTTPS use can wait for approval in the browser; never hang a deploy on it
 ts() { timeout 60 sudo tailscale "$@" || warn "'tailscale $*' failed (see above)"; }
 env_value() { sed -n "s/^$1=//p" .env 2>/dev/null | tail -n 1; }
+
+# Claude's way in: the Cloudflare tunnel, unless MCP_TUNNEL=funnel (then Funnel, below)
+tunnel=false
+if timeout 150 sh ops/mcp-tunnel.sh; then tunnel=true; fi
 
 if ! command -v tailscale > /dev/null || ! command -v jq > /dev/null; then
   warn "tailscale or jq is not installed; skipping"
@@ -34,8 +40,10 @@ ip=$(echo "$status" | jq -r '.Self.TailscaleIPs[0] // empty')
 
 with_mcp=false
 case ",$(env_value COMPOSE_PROFILES)," in *,mcp,*) with_mcp=true ;; esac
+with_funnel=false
+if $with_mcp && ! $tunnel; then with_funnel=true; fi
 
-if $with_mcp; then
+if $with_funnel; then
   mcp_url="https://$name"
   current=$(env_value MCP_PUBLIC_URL)
   if [ -z "$current" ]; then
@@ -54,7 +62,7 @@ fi
 ts serve reset
 if $with_mcp; then
   # Funnel puts only the MCP server on the internet
-  ts funnel --bg 8001
+  if $with_funnel; then ts funnel --bg 8001; fi
   ts serve --bg --https=8443 8000
   app_url="https://$name:8443"
 else
@@ -69,7 +77,7 @@ if [ "$(env_value BIND_ADDRESS)" = "127.0.0.1" ] && [ -n "$ip" ]; then
 fi
 
 echo "tailscale: app at $app_url${ip_url:+ and $ip_url} (tailnet only)"
-if $with_mcp; then
+if $with_funnel; then
   echo "tailscale: Claude connector at https://$name/mcp"
 fi
 

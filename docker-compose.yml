@@ -78,6 +78,19 @@ services:
       timeout: 5s
       retries: 3
 
+  # Claude's way in to the MCP server: a Cloudflare quick tunnel (no account, nothing to open in
+  # the firewall; it only connects out). It gets a random https://<name>.trycloudflare.com
+  # address, kept until the container is recreated; ops/mcp-tunnel.sh reads it from the metrics
+  # port and puts it in MCP_PUBLIC_URL. Set MCP_TUNNEL=funnel to use Tailscale Funnel instead.
+  mcp-tunnel:
+    profiles: [mcp]
+    image: cloudflare/cloudflared:2026.10.7
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:20241", "--url", "http://mcp:8001"]
+    ports:
+      - "127.0.0.1:${MCP_TUNNEL_METRICS_PORT:-20241}:20241"
+    networks: [mcp]
+
   # Scrapes every account nightly at SCRAPE_TIME (Israel time) and sends the results to
   # the backend. It holds the bank logins, which are added in the web app and passed to its
   # small API (port 8080, reachable only by the backend over the ingest network, not published).

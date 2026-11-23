@@ -464,3 +464,12 @@ def test_set_out_of_cashflow(engine, settings, data):
     assert "No transaction with id 999" in call_error(
         engine, settings, "set_out_of_cashflow", transaction_ids=[999], out_of_cashflow=True
     )
+
+
+def test_answers_in_plain_json(web):
+    """A Cloudflare quick tunnel doesn't pass event streams through, so /mcp answers in JSON."""
+    _, tokens = connect(web)
+    response = initialize(web, tokens["access_token"])
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/json")
+    assert response.json()["result"]["serverInfo"]["name"] == "SmartFin"

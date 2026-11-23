@@ -35,42 +35,26 @@ echo "== health: firewall INPUT rules"
 sudo iptables -S INPUT 2>/dev/null | head -n 12 | redact
 echo "== health: tailscale update"
 apt-cache policy tailscale 2>/dev/null | grep -E 'Installed|Candidate'
-echo "== health: through Funnel from here (public DNS, then 5 requests)"
-name=$(sudo tailscale status --json 2>/dev/null | jq -r '.Self.DNSName // empty' | sed 's/\.$//')
-pub=$(curl -s -m 10 -H 'accept: application/dns-json' "https://cloudflare-dns.com/dns-query?name=$name&type=A" \
-  | jq -r '[.Answer[]? | select(.type == 1) | .data][0] // empty')
-if [ -n "$name" ] && [ -n "$pub" ]; then
+echo "== health: Claude's address, from here (5 requests)"
+pub_url=$(sed -n 's/^MCP_PUBLIC_URL=//p' .env 2>/dev/null | tail -n 1)
+if [ -n "$pub_url" ]; then
   for i in 1 2 3 4 5; do
-    curl -s -m 20 -o /dev/null --resolve "$name:443:$pub" \
-      -w 'http %{http_code}  tcp %{time_connect}s  tls %{time_appconnect}s  total %{time_total}s\n' "https://$name/health" \
+    curl -s -m 20 -o /dev/null \
+      -w 'http %{http_code}  tcp %{time_connect}s  tls %{time_appconnect}s  total %{time_total}s\n' "$pub_url/health" \
       || echo "failed"
   done
 else
-  echo "no public address found"
+  echo "MCP_PUBLIC_URL is not set"
 fi
-echo "== health: same request without Funnel (3 each: the MCP server directly, then Tailscale's HTTPS on the tailnet address)"
-tsip=$(sudo tailscale status --json 2>/dev/null | jq -r '.Self.TailscaleIPs[0] // empty')
+echo "== health: the MCP server directly (3 requests)"
 for i in 1 2 3; do
   curl -s -m 20 -o /dev/null -w 'local  http %{http_code}  total %{time_total}s\n' http://127.0.0.1:8001/health || echo "failed"
 done
-if [ -n "$name" ] && [ -n "$tsip" ]; then
-  for i in 1 2 3; do
-    curl -s -m 20 -o /dev/null --resolve "$name:443:$tsip" \
-      -w 'tailnet  http %{http_code}  tls %{time_appconnect}s  total %{time_total}s\n' "https://$name/health" \
-      || echo "failed"
-  done
-fi
 echo "== health: active peers (path)"
 sudo tailscale status --json 2>/dev/null | jq -r '.Peer[]? | select(.Active)
   | "\(.OS // "?") tags=\((.Tags // []) | join(",")) relay=\(.Relay // "") direct=\(if (.CurAddr // "") != "" then "yes" else "no" end) rx=\(.RxBytes) tx=\(.TxBytes)"' | head -n 20
-echo "== health: tailscale ping to the Funnel ingress peers"
-sudo tailscale status --json 2>/dev/null | jq -r '.Peer[]? | select((.Tags // []) | index("tag:ingress")) | select(.Active) | .TailscaleIPs[0]' \
-  | head -n 3 | while read -r peer; do
-    timeout 30 sudo tailscale ping -c 8 --until-direct=false "$peer" 2>&1 | sed -E 's/^pong from [^ ]+ \([^)]*\)/pong/' | redact
-  done
-echo "== health: magicsock/derp log, last 10 minutes"
-sudo journalctl -u tailscaled --since "10 minutes ago" --no-pager -o cat 2>/dev/null \
-  | grep -iE 'magicsock|derp|disco|wg|handshake|ingress|funnel' | tail -n 40 | cut -c1-220 | redact
+echo "== health: tunnel log (last lines)"
+sudo docker compose logs --no-log-prefix --tail 8 mcp-tunnel 2>/dev/null | cut -c1-200 | redact
 echo "== health: tailscaled log, last 6 hours (counts)"
 log6=$(sudo journalctl -u tailscaled --since "6 hours ago" --no-pager -o cat 2>/dev/null)
 for pat in 'TLS handshake error' 'invalid-packet-filter' 'netmap' 'derp' 'magicsock' 'wg: '; do

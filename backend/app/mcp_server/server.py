@@ -533,5 +533,6 @@ def build_server(engine: Engine, settings: Settings) -> MCPServer:
 
 def build_app(engine: Engine, settings: Settings) -> Starlette:
     # Behind a tunnel or proxy the Host header is the public name, so allow any host; the
-    # bearer token is what protects /mcp.
-    return build_server(engine, settings).streamable_http_app(host="0.0.0.0")
+    # bearer token is what protects /mcp. Plain JSON responses rather than event streams, since
+    # a Cloudflare quick tunnel (ops/mcp-tunnel.sh) doesn't pass event streams through.
+    return build_server(engine, settings).streamable_http_app(host="0.0.0.0", json_response=True)
