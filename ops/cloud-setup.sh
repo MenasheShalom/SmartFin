@@ -8,8 +8,8 @@
 #
 # It installs Docker and Tailscale, clones SmartFin to ~/SmartFin, writes .env with fresh secrets,
 # starts everything, and serves the app over HTTPS on your tailnet only. Nothing is opened to the
-# internet, except the MCP server with --with-claude (through Tailscale Funnel); see
-# ops/tailscale-serve.sh for the layout.
+# internet, except the MCP server with --with-claude (through a Cloudflare quick tunnel, see
+# ops/mcp-tunnel.sh); see ops/tailscale-serve.sh for the layout.
 # Safe to run again: it keeps an existing .env and data, and pulls and rebuilds.
 set -euo pipefail
 
@@ -84,13 +84,13 @@ else
 fi
 
 if $WITH_CLAUDE; then
+  # MCP_PUBLIC_URL is filled in by ops/mcp-tunnel.sh (or for Funnel, ops/tailscale-serve.sh)
   set_env COMPOSE_PROFILES mcp
-  set_env MCP_PUBLIC_URL "https://${ts_name}"
 fi
 
 step "Publishing SmartFin through Tailscale"
-# If HTTPS certificates or Funnel are off for the tailnet, this prints a link to turn them on;
-# then run the script again.
+# If HTTPS certificates are off for the tailnet, this prints a link to turn them on; then run the
+# script again.
 sh ops/tailscale-serve.sh
 if $WITH_CLAUDE || grep -qE '^COMPOSE_PROFILES=.*mcp' .env; then
   WITH_CLAUDE=true
@@ -110,7 +110,7 @@ EOF
 if $WITH_CLAUDE; then
   cat <<EOF
 Claude:        add a custom connector at claude.ai with the URL
-               https://${ts_name}/mcp
+               $(sed -n 's/^MCP_PUBLIC_URL=//p' .env | tail -n 1)/mcp
 EOF
 fi
 cat <<EOF
