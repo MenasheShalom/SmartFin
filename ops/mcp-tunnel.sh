@@ -23,7 +23,12 @@ set_env() {
 }
 
 case ",$(env_value COMPOSE_PROFILES)," in *,mcp,*) ;; *) exit 1 ;; esac
-[ "$(env_value MCP_TUNNEL)" = "funnel" ] && exit 1
+if [ "$(env_value MCP_TUNNEL)" = "funnel" ]; then
+  # The MCP server then keeps MCP_PUBLIC_URL instead of following the tunnel
+  [ -n "$(env_value MCP_TUNNEL_METRICS_URL)" ] || grep -q '^MCP_TUNNEL_METRICS_URL=' .env \
+    || echo 'MCP_TUNNEL_METRICS_URL=' >> .env
+  exit 1
+fi
 
 if ! sudo docker compose up -d mcp-tunnel > /dev/null 2>&1; then
   warn "couldn't start the tunnel; see 'docker compose logs mcp-tunnel'"

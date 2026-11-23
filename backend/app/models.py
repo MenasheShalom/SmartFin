@@ -42,6 +42,8 @@ class AlertType(StrEnum):
     LOW_BALANCE = "low_balance"
     UNUSUAL_TRANSACTION = "unusual_transaction"
     SCRAPE_FAILURE = "scrape_failure"
+    # The address Claude's connector reaches the MCP server at changed (app/mcp_server/tunnel.py)
+    MCP_ADDRESS = "mcp_address"
 
 
 class ScrapeStatus(StrEnum):
