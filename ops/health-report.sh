@@ -31,6 +31,8 @@ echo "== health: peer paths (online peers)"
 sudo tailscale status --json 2>/dev/null | jq -c '[.Peer[]? | select(.Online)
   | if (.CurAddr // "") != "" then "direct" elif (.Relay // "") != "" then "relay:" + .Relay else "idle" end]
   | group_by(.) | map({(.[0]): length}) | add'
+echo "== health: firewall INPUT rules"
+sudo iptables -S INPUT 2>/dev/null | head -n 12 | redact
 echo "== health: tailscale update"
 apt-cache policy tailscale 2>/dev/null | grep -E 'Installed|Candidate'
 echo "== health: through Funnel from here (public DNS, then 5 requests)"

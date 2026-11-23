@@ -22,6 +22,8 @@ if ! command -v tailscale > /dev/null || ! command -v jq > /dev/null; then
   warn "tailscale or jq is not installed; skipping"
   exit 0
 fi
+# Update and tune Tailscale first, since it may restart it
+timeout 600 sh ops/tailscale-tune.sh || warn "tuning tailscale failed"
 status=$(sudo tailscale status --json 2>/dev/null)
 if [ "$(echo "$status" | jq -r '.BackendState // empty')" != "Running" ]; then
   warn "not connected; run 'sudo tailscale up' on the server, then deploy again"
