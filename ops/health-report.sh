@@ -48,6 +48,24 @@ if [ -n "$name" ] && [ -n "$pub" ]; then
 else
   echo "no public address found"
 fi
+echo "== health: same request without Funnel (3 each: the MCP server directly, then Tailscale's HTTPS on the tailnet address)"
+tsip=$(sudo tailscale status --json 2>/dev/null | jq -r '.Self.TailscaleIPs[0] // empty')
+for i in 1 2 3; do
+  curl -s -m 20 -o /dev/null -w 'local  http %{http_code}  total %{time_total}s\n' http://127.0.0.1:8001/health || echo "failed"
+done
+if [ -n "$name" ] && [ -n "$tsip" ]; then
+  for i in 1 2 3; do
+    curl -s -m 20 -o /dev/null --resolve "$name:443:$tsip" \
+      -w 'tailnet  http %{http_code}  tls %{time_appconnect}s  total %{time_total}s\n' "https://$name/health" \
+      || echo "failed"
+  done
+fi
+echo "== health: active peers (path)"
+sudo tailscale status --json 2>/dev/null | jq -r '.Peer[]? | select(.Active)
+  | "\(.OS // "?") tags=\((.Tags // []) | join(",")) relay=\(.Relay // "") direct=\(if (.CurAddr // "") != "" then "yes" else "no" end) rx=\(.RxBytes) tx=\(.TxBytes)"' | head -n 20
+echo "== health: magicsock/derp log, last 10 minutes"
+sudo journalctl -u tailscaled --since "10 minutes ago" --no-pager -o cat 2>/dev/null \
+  | grep -iE 'magicsock|derp|disco|wg|handshake|ingress|funnel' | tail -n 40 | cut -c1-220 | redact
 echo "== health: tailscaled log, last 6 hours (counts)"
 log6=$(sudo journalctl -u tailscaled --since "6 hours ago" --no-pager -o cat 2>/dev/null)
 for pat in 'TLS handshake error' 'invalid-packet-filter' 'netmap' 'derp' 'magicsock' 'wg: '; do
