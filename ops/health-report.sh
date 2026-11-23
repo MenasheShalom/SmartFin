@@ -46,6 +46,15 @@ if [ -n "$pub_url" ]; then
 else
   echo "MCP_PUBLIC_URL is not set"
 fi
+echo "== health: what Claude's connector sees at that address"
+if [ -n "$pub_url" ]; then
+  # /mcp without a token: 401, pointing at the sign-in metadata
+  curl -s -m 20 -o /dev/null -D - -X POST "$pub_url/mcp" -H 'content-type: application/json' \
+    -H 'accept: application/json, text/event-stream' -d '{"jsonrpc":"2.0","id":1,"method":"initialize"}' \
+    | grep -iE '^HTTP/|^www-authenticate' | tr -d '\r'
+  curl -s -m 20 "$pub_url/.well-known/oauth-protected-resource/mcp" | jq -c '{resource, authorization_servers}'
+  curl -s -m 20 "$pub_url/.well-known/oauth-authorization-server" | jq -c '{issuer, authorization_endpoint, registration_endpoint}'
+fi
 echo "== health: the MCP server directly (3 requests)"
 for i in 1 2 3; do
   curl -s -m 20 -o /dev/null -w 'local  http %{http_code}  total %{time_total}s\n' http://127.0.0.1:8001/health || echo "failed"
