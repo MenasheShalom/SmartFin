@@ -55,6 +55,8 @@ if [ -n "$pub_url" ]; then
   curl -s -m 20 "$pub_url/.well-known/oauth-protected-resource/mcp" | jq -c '{resource, authorization_servers}'
   curl -s -m 20 "$pub_url/.well-known/oauth-authorization-server" | jq -c '{issuer, authorization_endpoint, registration_endpoint}'
 fi
+echo "== health: Claude's whole path, signed in (initialize, list tools, call a tool)"
+timeout 90 sudo docker compose exec -T mcp python - < ops/mcp-check.py 2>&1 | tail -n 6
 echo "== health: the MCP server directly (3 requests)"
 for i in 1 2 3; do
   curl -s -m 20 -o /dev/null -w 'local  http %{http_code}  total %{time_total}s\n' http://127.0.0.1:8001/health || echo "failed"
