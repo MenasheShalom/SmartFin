@@ -70,3 +70,6 @@ echo "tailscale: app at $app_url${ip_url:+ and $ip_url} (tailnet only)"
 if $with_mcp; then
   echo "tailscale: Claude connector at https://$name/mcp"
 fi
+
+# Memory, load and Tailscale health in the deploy log, for when connections are slow or dropped
+timeout 120 sh ops/health-report.sh || warn "the health report failed"
