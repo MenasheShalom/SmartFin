@@ -239,8 +239,10 @@ login, so another app can't connect with it.
    `MCP_PUBLIC_URL` and prints the connector URL.
 
    The address stays the same while the `mcp-tunnel` container runs, but a new container (after a
-   reboot, say) gets a new one: the deploy log then says `NEW ADDRESS`, and the connector has to
-   be added again with it.
+   reboot, say) gets a new one. The MCP server follows it by itself (it asks the tunnel for its
+   address, and restarts when it changes) and raises an alert with the new connector URL, sent
+   over Telegram/email if those are set up (see [Alerts](#alerts)); the connector then has to be
+   added again with it.
 
    Tailscale Funnel is the other option (`MCP_TUNNEL=funnel` in `.env`: the MCP server at
    `https://<machine>.<tailnet>.ts.net`, the app moved to port 8443). From the Oracle server it

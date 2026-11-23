@@ -168,7 +168,7 @@ export interface Connections {
 
 export interface Alert {
   id: number;
-  type: "overspend" | "low_balance" | "unusual_transaction" | "scrape_failure";
+  type: "overspend" | "low_balance" | "unusual_transaction" | "scrape_failure" | "mcp_address";
   triggered_at: string;
   message: string;
   acknowledged: boolean;

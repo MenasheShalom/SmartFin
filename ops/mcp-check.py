@@ -24,7 +24,14 @@ from app.mcp_server.oauth import SCOPE
 from app.models import McpToken
 from sqlalchemy.orm import Session
 
-base = os.environ["MCP_PUBLIC_URL"].rstrip("/")
+# The address the MCP server uses: the tunnel's, when it follows one
+try:
+    from app.mcp_server.tunnel import tunnel_url
+except ImportError:  # an image from before the server followed the tunnel
+    tunnel_url = None
+metrics = os.environ.get("MCP_TUNNEL_METRICS_URL", "")
+followed = tunnel_url(metrics) if (tunnel_url and metrics) else None
+base = (followed or os.environ["MCP_PUBLIC_URL"]).rstrip("/")
 token = secrets.token_urlsafe(32)
 grant = f"deploy-check-{secrets.token_hex(8)}"
 

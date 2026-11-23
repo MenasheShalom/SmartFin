@@ -473,3 +473,56 @@ def test_answers_in_plain_json(web):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/json")
     assert response.json()["result"]["serverInfo"]["name"] == "SmartFin"
+
+
+def test_follows_the_tunnel_address(engine):
+    """The MCP server reads the quick tunnel's address, announces each new one once, and exits
+    when it changes (Docker restarts it with the new one)."""
+    import json
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    from sqlalchemy.orm import sessionmaker
+
+    from app.mcp_server import tunnel
+    from app.models import Alert, AlertType
+
+    host = {"name": "first-words.trycloudflare.com"}
+
+    class Metrics(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = json.dumps({"hostname": host["name"]}).encode()
+            self.send_response(200 if self.path == "/quicktunnel" else 404)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Metrics)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    metrics = f"http://127.0.0.1:{server.server_port}"
+    try:
+        url = tunnel.wait_for_tunnel_url(metrics, seconds=5)
+        assert url == "https://first-words.trycloudflare.com"
+
+        sessions = sessionmaker(bind=engine, expire_on_commit=False)
+        assert tunnel.announce(sessions, url) is True
+        assert tunnel.announce(sessions, url) is False  # once per address
+        with sessions() as session:
+            alert = session.scalars(select(Alert)).one()
+        assert alert.type == AlertType.MCP_ADDRESS
+        assert f"{url}/mcp" in alert.message
+
+        exited = threading.Event()
+        tunnel.CHECK_EVERY, old = 0.05, tunnel.CHECK_EVERY
+        try:
+            tunnel.watch(metrics, url, exit_=lambda code: exited.set())
+            assert not exited.wait(0.3)  # same address: keeps running
+            host["name"] = "second-words.trycloudflare.com"
+            assert exited.wait(2)  # new address: exits
+        finally:
+            tunnel.CHECK_EVERY = old
+    finally:
+        server.shutdown()
+    assert tunnel.tunnel_url("http://127.0.0.1:9") is None
