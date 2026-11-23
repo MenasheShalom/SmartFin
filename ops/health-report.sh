@@ -42,7 +42,7 @@ pub=$(curl -s -m 10 -H 'accept: application/dns-json' "https://cloudflare-dns.co
 if [ -n "$name" ] && [ -n "$pub" ]; then
   for i in 1 2 3 4 5; do
     curl -s -m 20 -o /dev/null --resolve "$name:443:$pub" \
-      -w 'http %{http_code}  tls %{time_appconnect}s  total %{time_total}s\n' "https://$name/health" \
+      -w 'http %{http_code}  tcp %{time_connect}s  tls %{time_appconnect}s  total %{time_total}s\n' "https://$name/health" \
       || echo "failed"
   done
 else
@@ -63,6 +63,11 @@ fi
 echo "== health: active peers (path)"
 sudo tailscale status --json 2>/dev/null | jq -r '.Peer[]? | select(.Active)
   | "\(.OS // "?") tags=\((.Tags // []) | join(",")) relay=\(.Relay // "") direct=\(if (.CurAddr // "") != "" then "yes" else "no" end) rx=\(.RxBytes) tx=\(.TxBytes)"' | head -n 20
+echo "== health: tailscale ping to the Funnel ingress peers"
+sudo tailscale status --json 2>/dev/null | jq -r '.Peer[]? | select((.Tags // []) | index("tag:ingress")) | select(.Active) | .TailscaleIPs[0]' \
+  | head -n 3 | while read -r peer; do
+    timeout 30 sudo tailscale ping -c 8 --until-direct=false "$peer" 2>&1 | sed -E 's/^pong from [^ ]+ \([^)]*\)/pong/' | redact
+  done
 echo "== health: magicsock/derp log, last 10 minutes"
 sudo journalctl -u tailscaled --since "10 minutes ago" --no-pager -o cat 2>/dev/null \
   | grep -iE 'magicsock|derp|disco|wg|handshake|ingress|funnel' | tail -n 40 | cut -c1-220 | redact
